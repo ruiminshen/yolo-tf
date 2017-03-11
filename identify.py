@@ -118,14 +118,12 @@ def main():
 
 
 def make_args():
-    path = os.path.join(data_dir, model.__name__)
     parser = argparse.ArgumentParser()
     parser.add_argument('image', help='input image')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-t', '--threshold', type=int, default=0.1, help='detection threshold')
     parser.add_argument('--seed', type=int)
-    parser.add_argument('--path_model', default=os.path.join(path, 'model', 'model.ckpt'))
     return parser.parse_args()
 
 
@@ -145,7 +143,6 @@ def make_logger():
     return logger
 
 if __name__ == '__main__':
-    data_dir = os.path.join(os.path.expanduser(os.path.expandvars('~/Documents/Database/TensorFlow')), os.path.basename(os.path.dirname(os.path.abspath(__file__))))
     args = make_args()
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
