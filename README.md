@@ -1,8 +1,8 @@
-# TensorFlow implementation of the [YOLO (Real-Time Object Detection)](https://arxiv.org/pdf/1506.02640.pdf)
+# TensorFlow implementation of the [YOLO (You Only Look Once)](https://arxiv.org/pdf/1506.02640.pdf)
 
 ## Dependencies
 
-Python 3, TensorFlow 1.0, Numpy, Pandas, Sympy, Matplotlib, BeautyfulSoap
+Python 3, TensorFlow 1.0, NumPy, Pandas, SymPy, Matplotlib, beautifulsoup4
 
 ## Basic Usage
 
