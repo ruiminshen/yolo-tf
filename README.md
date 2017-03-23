@@ -14,7 +14,7 @@ Python 3, TensorFlow 1.0, NumPy, Pandas, SymPy, Matplotlib, beautifulsoup4
 
 - Run train.py to load the model saved previously (if exists) and start the training process. A base directory (defined in "yolo/dir" of config.ini) identifies the logdir (for TensorBoard) and the model. The model will be saved periodically during the training process, and you can define the maximum evaluate number (-e option in command line) or press Ctrl+C to terminate the training program.
 
-- Run identify.py to detect objects in an image.
+- Run identify.py to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
 
 ## Configuration
 
