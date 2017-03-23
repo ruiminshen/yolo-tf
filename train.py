@@ -89,17 +89,17 @@ def main():
             model_train = model.Model(data[0], param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell, train=True, seed=args.seed)
         with tf.name_scope('loss'):
             loss_train = model.Loss(model_train, *data[1:])
-            hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(model.__name__ + '_hparam')])
-            loss = tf.reduce_sum([loss_train[key] * hparam[key] for key in loss_train], name='loss')
-            hparam_regularizer = tf.Variable(config.getfloat(model.__name__, 'hparam'), name='hparam_regularizer', trainable=False)
-            loss += hparam_regularizer * model_train.regularizer
+            with tf.variable_scope('hparam'):
+                hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(model.__name__ + '_hparam')])
+                hparam_regularizer = tf.Variable(config.getfloat(model.__name__, 'hparam'), name='hparam_regularizer', trainable=False)
+            loss = tf.reduce_sum([loss_train[key] * hparam[key] for key in loss_train], name='loss_objectives') + tf.multiply(hparam_regularizer, model_train.regularizer, name='loss_regularizer')
             for key in loss_train:
                 tf.summary.scalar(key, loss_train[key])
             tf.summary.scalar('regularizer', model_train.regularizer)
             tf.summary.scalar('loss', loss)
         with tf.name_scope('optimizer'):
             step = tf.Variable(0, name='step')
-            optimizer = tf.train.AdamOptimizer(1e-5).minimize(loss, global_step=step)
+            optimizer = tf.train.AdamOptimizer(config.getfloat('optimizer_adam', 'learning_rate')).minimize(loss, global_step=step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()

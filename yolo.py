@@ -172,9 +172,9 @@ class Model(object):
             with tf.name_scope('output'):
                 pred = cells * classes
                 self.pred = tf.reshape(self.fc.output[:, :pred], [-1, cells, classes], name='pred')
-                confs = cells * boxes_per_cell
-                self.confs = tf.reshape(self.fc.output[:, pred:pred + confs], [-1, cells, boxes_per_cell], name='confs')
-                self.coords = tf.reshape(self.fc.output[:, pred + confs:], [-1, cells, boxes_per_cell, 4], name='coords')
+                boxes = cells * boxes_per_cell
+                self.iou = tf.reshape(self.fc.output[:, pred:pred + boxes], [-1, cells, boxes_per_cell], name='iou')
+                self.coords = tf.reshape(self.fc.output[:, pred + boxes:], [-1, cells, boxes_per_cell, 4], name='coords')
                 with tf.name_scope('coords'):
                     self.offset_xy = self.coords[:, :, :, :2]
                     self.wh_sqrt = self.coords[:, :, :, 2:4]
@@ -185,7 +185,7 @@ class Model(object):
                     self.xy_min = self.offset_xy - _wh
                     self.xy_max = self.offset_xy + _wh
                     self.areas = wh[:, :, :, 0] * wh[:, :, :, 1]
-                self.prob = tf.reshape(self.pred, [-1, cells, 1, classes]) * tf.expand_dims(self.confs, -1)
+                self.prob = tf.reshape(self.pred, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1)
             self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight in param_fc.weight], name='regularizer')
         self.param_conv = param_conv
         self.param_fc = param_fc
@@ -211,23 +211,24 @@ class Loss(dict):
         self.xy_min = xy_min
         self.xy_max = xy_max
         self.areas = areas
-        
         with tf.name_scope('iou'):
             _xy_min = tf.maximum(model.xy_min, self.xy_min) 
             _xy_max = tf.minimum(model.xy_max, self.xy_max)
             _wh = tf.maximum(_xy_max - _xy_min, 0.0)
             _areas = _wh[:, :, :, 0] * _wh[:, :, :, 1]
-            iou = tf.truediv(_areas, tf.maximum(self.areas + model.areas - _areas, 1e-10), name='iou')
-        with tf.name_scope('confs'):
-            mask = tf.equal(iou, tf.reduce_max(iou, 2, True))
-            mask = tf.to_float(mask)
-            mask1 = self.mask * mask
-            mask0 = 1 - mask1
-        self['pred'] = tf.nn.l2_loss(self.mask * model.pred - self.pred, name='pred')
-        confs = model.confs - iou
-        self['confs1'] = tf.nn.l2_loss(mask1 * confs, name='confs1')
-        self['confs0'] = tf.nn.l2_loss(mask0 * confs, name='confs0')
-        self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask1, -1) * (tf.concat([model.offset_xy, model.wh_sqrt], -1) - self.coords), name='coords')
+            areas = tf.maximum(self.areas + model.areas - _areas, 1e-10)
+            iou = tf.truediv(_areas, areas, name='iou')
+        with tf.name_scope('mask'):
+            max_iou = tf.reduce_max(iou, 2, True, name='max_iou')
+            mask_max_iou = tf.to_float(tf.equal(iou, max_iou, name='mask_max_iou'))
+            mask_best = self.mask * mask_max_iou
+            mask_normal = 1 - mask_best
+        iou_diff = model.iou - iou
+        with tf.name_scope('objectives'):
+            self['pred'] = tf.nn.l2_loss(self.mask * model.pred - self.pred, name='pred')
+            self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
+            self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
+            self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (tf.concat([model.offset_xy, model.wh_sqrt], -1) - self.coords), name='coords')
 
 
 def main():
