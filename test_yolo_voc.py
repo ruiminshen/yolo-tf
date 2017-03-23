@@ -98,7 +98,7 @@ def main():
                 image = tf.image.per_image_standardization(image)
                 labels = [ops.convert_to_tensor(l) for l in data[1:]]
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
-                data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('batch', 'capacity'), min_after_dequeue=args.batch_size * config.getint('batch', 'min'), num_threads=multiprocessing.cpu_count())
+                data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
