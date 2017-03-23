@@ -47,10 +47,7 @@ def iou(xy_min1, xy_max1, xy_min2, xy_max2):
 
 def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
     _, _, classes = prob.shape
-    boxes = []
-    for prob, xy_min, xy_max in zip(prob, xy_min, xy_max):
-        for prob, xy_min, xy_max in zip(prob, xy_min, xy_max):
-            boxes.append((prob, xy_min, xy_max))
+    boxes = [(_prob, _xy_min, _xy_max) for _prob, _xy_min, _xy_max in zip(prob.reshape(-1, classes), xy_min.reshape(-1, 2), xy_max.reshape(-1, 2))]
     for c in range(classes):
         boxes.sort(key=lambda box: box[0][c], reverse=True)
         for i in range(len(boxes) - 1):
@@ -104,11 +101,11 @@ def main():
         ax.imshow(image)
         prob, xy_min, xy_max = sess.run([model1.prob * tf.to_float(model1.prob > args.threshold), model1.cell_xy + model1.xy_min, model1.cell_xy + model1.xy_max])
         boxes = non_max_suppress(prob[0], xy_min[0], xy_max[0])
-        for prob, xy_min, xy_max in boxes:
-            index = np.argmax(prob)
-            if prob[index] > args.threshold:
-                wh = xy_max - xy_min
-                _xy_min = xy_min * [width, height] / [cell_width, cell_height]
+        for _prob, _xy_min, _xy_max in boxes:
+            index = np.argmax(_prob)
+            if _prob[index] > args.threshold:
+                wh = _xy_max - _xy_min
+                _xy_min = _xy_min * [width, height] / [cell_width, cell_height]
                 _wh = wh * [width, height] / [cell_width, cell_height]
                 ax.add_patch(patches.Rectangle(_xy_min, _wh[0], _wh[1], linewidth=1, edgecolor='r', facecolor='none'))
                 ax.annotate(names[index], _xy_min, color='red')
