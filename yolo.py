@@ -177,9 +177,7 @@ class Model(object):
                 self.coords = tf.reshape(self.fc.output[:, pred + boxes:], [-1, cells, boxes_per_cell, 4], name='coords')
                 with tf.name_scope('coords'):
                     self.offset_xy = self.coords[:, :, :, :2]
-                    self.wh_sqrt = self.coords[:, :, :, 2:4]
-                    self.wh = self.wh_sqrt ** 2
-                    self.wh_sqrt = tf.abs(self.wh_sqrt, name='wh_sqrt')
+                    self.wh = self.coords[:, :, :, 2:4] ** 2
                     wh = self.wh * [cell_width, cell_height]
                     _wh = wh / 2
                     self.xy_min = self.offset_xy - _wh
@@ -228,7 +226,7 @@ class Loss(dict):
             self['pred'] = tf.nn.l2_loss(self.mask * model.pred - self.pred, name='pred')
             self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
             self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
-            self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (tf.concat([model.offset_xy, model.wh_sqrt], -1) - self.coords), name='coords')
+            self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
 
 
 def main():
