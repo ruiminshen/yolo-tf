@@ -15,27 +15,27 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os
+import sys
 import math
+import logging
+import getpass
 import sympy
 
 
-def load(sess, saver, path_model, logger):
-    modeldir = os.path.dirname(path_model)
-    try:
-        if os.path.exists(modeldir):
-            saver.restore(sess, path_model)
-            logger.info('load model: ' + path_model)
-        else:
-            logger.warn('modeldir %s not exists' % modeldir)
-    except:
-        logger.warn('failed to load model: ' + path_model)
-
-
-def save(sess, saver, path_model, logger):
-    os.makedirs(os.path.dirname(path_model), exist_ok=True)
-    saver.save(sess, path_model)
-    logger.info('model saved into: ' + path_model)
+def make_logger(level, fmt):
+    logger = logging.getLogger(getpass.getuser())
+    logger.setLevel(level)
+    formatter = logging.Formatter(fmt)
+    settings = [
+        (logging.INFO, sys.stdout),
+        (logging.WARN, sys.stderr),
+    ]
+    for level, out in settings:
+        handler = logging.StreamHandler(out)
+        handler.setLevel(level)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    return logger
 
 
 def get_factor2(x):

@@ -16,11 +16,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
-import sys
 import argparse
 import configparser
-import logging
-import getpass
+import importlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -91,7 +89,7 @@ def main():
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
-        utils.load(sess, saver, path_model, logger)
+        saver.restore(sess, path_model)
         image = sess.run(image[0])
         vmin = np.min(image)
         vmax = np.max(image)
@@ -123,28 +121,12 @@ def make_args():
     parser.add_argument('--seed', type=int)
     return parser.parse_args()
 
-
-def make_logger():
-    logger = logging.getLogger(getpass.getuser())
-    logger.setLevel(eval('logging.' + args.level.strip().upper()))
-    formatter = logging.Formatter(config.get('logging', 'format'))
-    settings = [
-        (logging.INFO, sys.stdout),
-        (logging.WARN, sys.stderr),
-    ]
-    for level, out in settings:
-        handler = logging.StreamHandler(out)
-        handler.setLevel(level)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
-
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = make_logger()
+    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
     try:
         main()
     except Exception as e:

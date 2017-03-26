@@ -16,12 +16,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
-import sys
 import argparse
 import configparser
-import logging
+import importlib
 import pickle
-import getpass
 import shutil
 import time
 import multiprocessing
@@ -38,7 +36,9 @@ def output(sess, step, summary, summary_writer, saver, path_model):
         logger.info('evaluation=%d/%d' % (evaluation, args.evaluation))
         summary_writer.add_summary(sess.run(summary), step)
     if step % args.save_cycle == 0:
-        utils.save(sess, saver, path_model, logger)
+        os.makedirs(os.path.dirname(path_model), exist_ok=True)
+        saver.save(sess, path_model)
+        logger.info('model saved into: ' + path_model)
 
 
 def main():
@@ -77,13 +77,15 @@ def main():
             tf.summary.histogram(var.name, var)
         with tf.name_scope('data'):
             with tf.device('/cpu:0'):
-                imagepaths = ops.convert_to_tensor(data[0])
-                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
-                data = tf.train.slice_input_producer([imagepaths] + labels, shuffle=True)
-                image = tf.image.decode_jpeg(tf.read_file(data[0]), channels=3)
+                imagepaths = tf.train.string_input_producer(data[0], shuffle=False)
+                reader = tf.WholeFileReader()
+                _, image = reader.read(imagepaths)
+                image = tf.image.decode_jpeg(image, channels=3)
                 image = tf.image.resize_images(image, [height, width])
                 image = tf.image.per_image_standardization(image)
-                data = tf.train.shuffle_batch([image] + data[1:], batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
+                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
+                labels = tf.train.slice_input_producer(labels, shuffle=False)
+                data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
         logger.info('init model')
         with tf.name_scope('train'):
             model_train = model.Model(data[0], param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell, train=True, seed=args.seed)
@@ -107,7 +109,10 @@ def main():
         threads = tf.train.start_queue_runners(sess, coord)
         logger.info('load model')
         saver = tf.train.Saver()
-        utils.load(sess, saver, path_model, logger)
+        try:
+            saver.restore(sess, path_model)
+        except:
+            logger.warn('error occurs while loading model: ' + path_model)
         logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
         logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
         try:
@@ -120,7 +125,9 @@ def main():
         coord.request_stop()
         coord.join(threads)
         logger.info('save model')
-        utils.save(sess, saver, path_model, logger)
+        os.makedirs(os.path.dirname(path_model), exist_ok=True)
+        saver.save(sess, path_model)
+        logger.info('model saved into: ' + path_model)
         logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
         logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
     cmd = 'tensorboard --logdir ' + logdir
@@ -142,28 +149,12 @@ def make_args():
     parser.add_argument('--save_cycle', default=500, type=int)
     return parser.parse_args()
 
-
-def make_logger():
-    logger = logging.getLogger(getpass.getuser())
-    logger.setLevel(eval('logging.' + args.level.strip().upper()))
-    formatter = logging.Formatter(config.get('logging', 'format'))
-    settings = [
-        (logging.INFO, sys.stdout),
-        (logging.WARN, sys.stderr),
-    ]
-    for level, out in settings:
-        handler = logging.StreamHandler(out)
-        handler.setLevel(level)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
-
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = make_logger()
+    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
     try:
         main()
     except Exception as e:
