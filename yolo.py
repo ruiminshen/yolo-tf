@@ -235,7 +235,7 @@ def main():
     section = os.path.splitext(os.path.basename(__file__))[0]
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    path = os.path.expanduser(os.path.expandvars(config.get('voc', 'path')))
+    path = os.path.expanduser(os.path.expandvars(args.path))
     print('loading dataset from ' + path)
     imagenames, imageshapes, labels = voc.load_dataset(path, names)
     width = config.getint(section, 'width')
@@ -255,6 +255,7 @@ def main():
 
 def make_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('path', help='PASCAL VOC data directory')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     return parser.parse_args()
 
