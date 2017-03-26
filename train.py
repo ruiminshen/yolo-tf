@@ -101,7 +101,8 @@ def main():
             tf.summary.scalar('loss', loss)
         with tf.name_scope('optimizer'):
             step = tf.Variable(0, name='step')
-            optimizer = tf.train.AdamOptimizer(config.getfloat('optimizer_adam', 'learning_rate')).minimize(loss, global_step=step)
+            logger.info('learning rate=%f' % args.learning_rate)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(loss, global_step=step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()
@@ -144,6 +145,7 @@ def make_args():
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-t', '--test', action='store_true')
     parser.add_argument('-b', '--batch_size', default=16, type=int)
+    parser.add_argument('-lr', '--learning_rate', default=1e-5, type=float)
     parser.add_argument('--seed', type=int)
     parser.add_argument('--output_cycle', default=10, type=int)
     parser.add_argument('--save_cycle', default=500, type=int)
