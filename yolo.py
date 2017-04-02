@@ -33,8 +33,8 @@ def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_he
     mask = np.zeros([len(labels), cells, 1])
     pred = np.zeros([len(labels), cells, classes])
     coords = np.zeros([len(labels), cells, boxes_per_cell, 4])
-    xy_min = np.zeros([len(labels), cells, boxes_per_cell, 2])
-    xy_max = np.zeros([len(labels), cells, boxes_per_cell, 2])
+    offset_xy_min = np.zeros([len(labels), cells, boxes_per_cell, 2])
+    offset_xy_max = np.zeros([len(labels), cells, boxes_per_cell, 2])
     for i, ((image_height, image_width, _), objects) in enumerate(zip(imageshapes, labels)):
         for xmin, ymin, xmax, ymax, c in objects:
             x = (xmin + xmax) / 2
@@ -54,12 +54,12 @@ def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_he
             pred[i, index, :] = [0] * classes
             pred[i, index, c] = 1
             coords[i, index, :, :] = [[offset_x, offset_y, math.sqrt(_w), math.sqrt(_h)]] * boxes_per_cell
-            xy_min[i, index, :, :] = [[offset_x - _w / 2 * cell_width, offset_y - _h / 2 * cell_height]] * boxes_per_cell
-            xy_max[i, index, :, :] = [[offset_x + _w / 2 * cell_width, offset_y + _h / 2 * cell_height]] * boxes_per_cell
-    wh = xy_max - xy_min
+            offset_xy_min[i, index, :, :] = [[offset_x - _w / 2 * cell_width, offset_y - _h / 2 * cell_height]] * boxes_per_cell
+            offset_xy_max[i, index, :, :] = [[offset_x + _w / 2 * cell_width, offset_y + _h / 2 * cell_height]] * boxes_per_cell
+    wh = offset_xy_max - offset_xy_min
     assert np.all(wh >= 0)
     areas = np.multiply.reduce(wh, -1)
-    return mask, pred, coords, xy_min, xy_max, areas
+    return mask, pred, coords, offset_xy_min, offset_xy_max, areas
 
 
 class ParamConv(object):
@@ -174,22 +174,29 @@ class Model(object):
                 self.pred = tf.reshape(self.fc.output[:, :pred], [-1, cells, classes], name='pred')
                 boxes = cells * boxes_per_cell
                 self.iou = tf.reshape(self.fc.output[:, pred:pred + boxes], [-1, cells, boxes_per_cell], name='iou')
-                self.coords = tf.reshape(self.fc.output[:, pred + boxes:], [-1, cells, boxes_per_cell, 4], name='coords')
-                with tf.name_scope('coords'):
-                    self.offset_xy = self.coords[:, :, :, :2]
-                    self.wh = self.coords[:, :, :, 2:4] ** 2
-                    wh = self.wh * [cell_width, cell_height]
-                    _wh = wh / 2
-                    self.xy_min = self.offset_xy - _wh
-                    self.xy_max = self.offset_xy + _wh
-                    self.areas = wh[:, :, :, 0] * wh[:, :, :, 1]
+                with tf.name_scope('offset'):
+                    coords = tf.reshape(self.fc.output[:, pred + boxes:], [-1, cells, boxes_per_cell, 4], name='coords_raw')
+                    self.offset_xy = coords[:, :, :, :2]
+                    wh01_sqrt = coords[:, :, :, 2:]
+                    wh01 = wh01_sqrt ** 2
+                    wh01_sqrt = tf.abs(wh01_sqrt, name='wh01_sqrt')
+                    self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
+                    self.wh = wh01 * [cell_width, cell_height]
+                    _wh = self.wh / 2
+                    self.offset_xy_min = self.offset_xy - _wh
+                    self.offset_xy_max = self.offset_xy + _wh
+                    self.areas = self.wh[:, :, :, 0] * self.wh[:, :, :, 1]
+                with tf.name_scope('xy'):
+                    cell_xy = self.calc_cell_xy().reshape([1, cells, 1, 2])
+                    self.xy = cell_xy + self.offset_xy
+                    self.xy_min = cell_xy + self.offset_xy_min
+                    self.xy_max = cell_xy + self.offset_xy_max
                 self.prob = tf.reshape(self.pred, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1)
             self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight in param_fc.weight], name='regularizer')
         self.param_conv = param_conv
         self.param_fc = param_fc
         self.classes = classes
         self.boxes_per_cell = boxes_per_cell
-        self.cell_xy = self.calc_cell_xy().reshape([1, cells, 1, 2])
     
     def calc_cell_xy(self):
         _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
@@ -201,18 +208,18 @@ class Model(object):
 
 
 class Loss(dict):
-    def __init__(self, model, mask, pred, coords, xy_min, xy_max, areas):
+    def __init__(self, model, mask, pred, coords, offset_xy_min, offset_xy_max, areas):
         self.model = model
         self.mask = mask
         self.pred = pred
         self.coords = coords
-        self.xy_min = xy_min
-        self.xy_max = xy_max
+        self.offset_xy_min = offset_xy_min
+        self.offset_xy_max = offset_xy_max
         self.areas = areas
         with tf.name_scope('iou'):
-            _xy_min = tf.maximum(model.xy_min, self.xy_min) 
-            _xy_max = tf.minimum(model.xy_max, self.xy_max)
-            _wh = tf.maximum(_xy_max - _xy_min, 0.0)
+            _offset_xy_min = tf.maximum(model.offset_xy_min, self.offset_xy_min) 
+            _offset_xy_max = tf.minimum(model.offset_xy_max, self.offset_xy_max)
+            _wh = tf.maximum(_offset_xy_max - _offset_xy_min, 0.0)
             _areas = _wh[:, :, :, 0] * _wh[:, :, :, 1]
             areas = tf.maximum(self.areas + model.areas - _areas, 1e-10)
             iou = tf.truediv(_areas, areas, name='iou')
