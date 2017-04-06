@@ -105,8 +105,6 @@ def main():
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()
-        cmd = 'tensorboard --logdir ' + logdir
-        logger.info('run: ' + cmd)
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
         logger.info('load model')
@@ -117,6 +115,8 @@ def main():
             logger.warn('error occurs while loading model: ' + path_model)
         logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
         logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
+        cmd = 'tensorboard --logdir ' + logdir
+        logger.info('run: ' + cmd)
         try:
             _step = sess.run(step)
             while args.evaluation <= 0 or _step * args.batch_size < args.evaluation:
