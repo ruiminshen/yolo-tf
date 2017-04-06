@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import argparse
 import configparser
+import pickle
 import importlib
 import numpy as np
 import pandas as pd
@@ -62,8 +63,10 @@ def main():
     yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
-    with open(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'names'))), 'r') as f:
-        names = [line.strip() for line in f]
+    path = os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'cache')))
+    logger.info('loading cache from ' + path)
+    with open(path, 'rb') as f:
+        names = pickle.load(f)
     width = config.getint(model.__name__, 'width')
     height = config.getint(model.__name__, 'height')
     layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'conv'))), sep='\t')

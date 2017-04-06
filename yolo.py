@@ -170,16 +170,18 @@ class Model(object):
             _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
             cells = cell_height * cell_width
             with tf.name_scope('output'):
-                pred = cells * classes
-                self.pred = tf.reshape(self.fc.output[:, :pred], [-1, cells, classes], name='pred')
-                boxes = cells * boxes_per_cell
-                self.iou = tf.reshape(self.fc.output[:, pred:pred + boxes], [-1, cells, boxes_per_cell], name='iou')
+                end = cells * classes
+                self.pred = tf.reshape(self.fc.output[:, :end], [-1, cells, classes], name='pred')
+                start = end
+                end += cells * boxes_per_cell
+                self.iou = tf.reshape(self.fc.output[:, start:end], [-1, cells, boxes_per_cell], name='iou')
                 with tf.name_scope('offset'):
-                    coords = tf.reshape(self.fc.output[:, pred + boxes:], [-1, cells, boxes_per_cell, 4], name='coords_raw')
-                    self.offset_xy = coords[:, :, :, :2]
-                    wh01_sqrt = coords[:, :, :, 2:]
-                    wh01 = wh01_sqrt ** 2
-                    wh01_sqrt = tf.abs(wh01_sqrt, name='wh01_sqrt')
+                    start = end
+                    end += cells * boxes_per_cell * 2
+                    self.offset_xy = tf.reshape(self.fc.output[:, start:end], [-1, cells, boxes_per_cell, 2], name='offset_xy')
+                    wh01_sqrt_base = tf.reshape(self.fc.output[:, end:], [-1, cells, boxes_per_cell, 2], name='wh01_sqrt_base')
+                    wh01 = wh01_sqrt_base ** 2
+                    wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
                     self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
                     self.wh = wh01 * [cell_width, cell_height]
                     _wh = self.wh / 2
@@ -240,7 +242,7 @@ def main():
     config = configparser.ConfigParser()
     config.read('config.ini')
     section = os.path.splitext(os.path.basename(__file__))[0]
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+    with open(os.path.expanduser(os.path.expandvars(args.names)), 'r') as f:
         names = [line.strip() for line in f]
     path = os.path.expanduser(os.path.expandvars(args.path))
     print('loading dataset from ' + path)
@@ -256,6 +258,7 @@ def main():
     imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     with open(path, 'wb') as f:
+        pickle.dump(names, f)
         pickle.dump((imagepaths, *labels), f)
     print('cache saved into ' + path)
 
@@ -264,6 +267,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='PASCAL VOC data directory')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('-n', '--names', default='names20', help='names file')
     return parser.parse_args()
 
 if __name__ == '__main__':

@@ -52,11 +52,10 @@ def main():
     if args.delete:
         logger.warn('delete logdir: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
-    with open(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'names'))), 'r') as f:
-        names = [line.strip() for line in f]
     path = os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
+        names = pickle.load(f)
         data = pickle.load(f)
     logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
     width = config.getint(model.__name__, 'width')
@@ -106,6 +105,8 @@ def main():
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()
+        cmd = 'tensorboard --logdir ' + logdir
+        logger.info('run: ' + cmd)
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
         logger.info('load model')
@@ -131,8 +132,6 @@ def main():
         logger.info('model saved into: ' + path_model)
         logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
         logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
-    cmd = 'tensorboard --logdir ' + logdir
-    logger.info('run: ' + cmd)
     #os.system(cmd)
 
 
@@ -145,7 +144,7 @@ def make_args():
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-t', '--test', action='store_true')
     parser.add_argument('-b', '--batch_size', default=16, type=int)
-    parser.add_argument('-lr', '--learning_rate', default=1e-5, type=float)
+    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float)
     parser.add_argument('--seed', type=int)
     parser.add_argument('--output_cycle', default=10, type=int)
     parser.add_argument('--save_cycle', default=500, type=int)
