@@ -10,7 +10,7 @@ Python 3, TensorFlow 1.0, NumPy, Pandas, SymPy, Matplotlib, beautifulsoup4
 
 - Extract these tars into one directory (such as "~/Documents/Database/").
 
-- Run "yolo.py" (the PASCAL VOC2007 data directory (such as "~/Documents/Database/VOCdevkit/VOC2007") should be given) to create VOC label cache (path is defined in "yolo/cache" of config.ini) for the YOLO training program.
+- Run "cache.py" (the PASCAL VOC2007 data directory (such as "~/Documents/Database/VOCdevkit/VOC2007") should be given) to create VOC label cache (path is defined in "yolo/cache" of config.ini) for the YOLO training program.
 
 - Run "train.py" to load the model saved previously (if exists) and start the training process. A base directory (defined in "yolo/dir" of config.ini) identifies the logdir (for TensorBoard) and the model. The model will be saved periodically during the training process, and you can define the maximum evaluate number (-e option in command line) or press Ctrl+C to terminate the training program.
 

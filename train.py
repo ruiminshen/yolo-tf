@@ -26,7 +26,7 @@ import multiprocessing
 import pandas as pd
 import tensorflow as tf
 from tensorflow.python.framework import ops
-import yolo as model
+import model
 import utils
 
 
@@ -42,6 +42,8 @@ def output(sess, step, summary, summary_writer, saver, path_model):
 
 
 def main():
+    section = config.get('config', 'model')
+    yolo = importlib.import_module('model.' + section)
     yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
@@ -52,19 +54,19 @@ def main():
     if args.delete:
         logger.warn('delete logdir: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
-    path = os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'cache')))
+    path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
         names = pickle.load(f)
         data = pickle.load(f)
     logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
-    width = config.getint(model.__name__, 'width')
-    height = config.getint(model.__name__, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'conv'))), sep='\t')
+    width = config.getint(section, 'width')
+    height = config.getint(section, 'height')
+    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
     cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
     cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'fc'))), sep='\t')
-    boxes_per_cell = config.getint(model.__name__, 'boxes_per_cell')
+    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
+    boxes_per_cell = config.getint(section, 'boxes_per_cell')
     with tf.Session() as sess:
         logger.info('init param')
         with tf.variable_scope('param'):
@@ -87,12 +89,12 @@ def main():
                 data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
         logger.info('init model')
         with tf.name_scope('train'):
-            model_train = model.Model(data[0], param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell, train=True, seed=args.seed)
+            model_train = yolo.Model(data[0], param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell, training=True, seed=args.seed)
         with tf.name_scope('loss'):
-            loss_train = model.Loss(model_train, *data[1:])
+            loss_train = yolo.Loss(model_train, *data[1:])
             with tf.variable_scope('hparam'):
-                hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(model.__name__ + '_hparam')])
-                hparam_regularizer = tf.Variable(config.getfloat(model.__name__, 'hparam'), name='hparam_regularizer', trainable=False)
+                hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(section + '_hparam')])
+                hparam_regularizer = tf.Variable(config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
             loss = tf.reduce_sum([loss_train[key] * hparam[key] for key in loss_train], name='loss_objectives') + tf.multiply(hparam_regularizer, model_train.regularizer, name='loss_regularizer')
             for key in loss_train:
                 tf.summary.scalar(key, loss_train[key])

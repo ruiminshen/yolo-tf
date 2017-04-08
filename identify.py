@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 from tensorflow.python.framework import ops
-import yolo as model
+import model
 import utils
 
 
@@ -60,20 +60,22 @@ def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
 
 
 def main():
+    section = config.get('config', 'model')
+    yolo = importlib.import_module('model.' + section)
     yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
-    path = os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'cache')))
+    path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
         names = pickle.load(f)
-    width = config.getint(model.__name__, 'width')
-    height = config.getint(model.__name__, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'conv'))), sep='\t')
+    width = config.getint(section, 'width')
+    height = config.getint(section, 'height')
+    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
     cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
     cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model.__name__, 'fc'))), sep='\t')
-    boxes_per_cell = config.getint(model.__name__, 'boxes_per_cell')
+    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
+    boxes_per_cell = config.getint(section, 'boxes_per_cell')
     with tf.Session() as sess:
         logger.info('init param')
         with tf.variable_scope('param'):
@@ -88,7 +90,7 @@ def main():
             image = tf.expand_dims(image, 0)
         logger.info('init model')
         with tf.name_scope('1'):
-            model1 = model.Model(image, param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell)
+            model1 = yolo.Model(image, param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell)
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
