@@ -71,9 +71,10 @@ def main():
         logger.info('init param')
         with tf.variable_scope('param'):
             param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = cell_width * cell_height * param_conv.bais[-1].get_shape()[0].value
+            inputs = cell_width * cell_height * param_conv.get_size(-1)
+            param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
             outputs = cell_width * cell_height * (len(names) + boxes_per_cell * 5)
-            param_fc = model.ParamFC(inputs, layers_fc, outputs, seed=args.seed)
+            param_fc(outputs)
         for var in tf.trainable_variables():
             tf.summary.histogram(var.name, var)
         with tf.name_scope('data'):

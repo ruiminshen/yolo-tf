@@ -80,9 +80,10 @@ def main():
         logger.info('init param')
         with tf.variable_scope('param'):
             param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = cell_width * cell_height * param_conv.bais[-1].get_shape()[0].value
+            inputs = cell_width * cell_height * param_conv.get_size(-1)
+            param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
             outputs = cell_width * cell_height * (len(names) + boxes_per_cell * 5)
-            param_fc = model.ParamFC(inputs, layers_fc, outputs, seed=args.seed)
+            param_fc(outputs)
         with tf.name_scope('data'):
             image = tf.image.decode_jpeg(tf.read_file(ops.convert_to_tensor(args.image)), channels=3)
             image = tf.image.resize_images(image, [height, width])

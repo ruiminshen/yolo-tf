@@ -19,41 +19,44 @@ import math
 import tensorflow as tf
 
 
-class ParamConv(object):
+class ParamConv(list):
     def __init__(self, channels, layers, seed=None):
         self.channels = channels
-        self.weight = []
-        self.bais = []
         for i, (size, kernel1, kernel2) in enumerate(layers[['size', 'kernel1', 'kernel2']].values):
             with tf.variable_scope('conv%d' % i):
                 weight = tf.Variable(tf.truncated_normal([kernel1, kernel2, channels, size], stddev=1.0 / math.sqrt(channels * kernel1 * kernel2), seed=seed), name='weight')
-                self.weight.append(weight)
                 bais = tf.Variable(tf.zeros([size]), name='bais')
-                self.bais.append(bais)
+                list.append(self, (weight, bais))
                 channels = size
+    
+    def get_size(self, i):
+        return list.__getitem__(self, i)[1].get_shape()[0].value
 
 
-class ParamFC(object):
-    def __init__(self, inputs, layers, outputs, seed=None):
-        self.weight = []
-        self.bais = []
+class ParamFC(list):
+    def __init__(self, inputs, layers, seed=None):
         for i, size in enumerate(layers['size'].values):
             with tf.variable_scope('fc%d' % i):
-                weight = weight = tf.Variable(tf.truncated_normal([inputs, size], stddev=1.0 / math.sqrt(inputs), seed=seed), name='weight')
-                self.weight.append(weight)
+                weight = tf.Variable(tf.truncated_normal([inputs, size], stddev=1.0 / math.sqrt(inputs), seed=seed), name='weight')
                 bais = tf.Variable(tf.zeros([size]), name='bais')
-                self.bais.append(bais)
+                list.append(self, (weight, bais))
                 inputs = size
+        self.seed = seed
+    
+    def __call__(self, outputs):
+        inputs = self.get_size(-1)
         with tf.variable_scope('fc'):
-            weight = weight = tf.Variable(tf.truncated_normal([inputs, outputs], stddev=1.0 / math.sqrt(inputs), seed=seed), name='weight')
-            self.weight.append(weight)
+            weight = tf.Variable(tf.truncated_normal([inputs, outputs], stddev=1.0 / math.sqrt(inputs), seed=self.seed), name='weight')
             bais = tf.Variable(tf.zeros([outputs]), name='bais')
-            self.bais.append(bais)
+            list.append(self, (weight, bais))
+    
+    def get_size(self, i):
+        return list.__getitem__(self, i)[1].get_shape()[0].value
 
 
 class ModelConv(list):
     def __init__(self, image, param, layers, training=False, seed=None):
-        for i, (weight, bais, (stride1, stride2, pooling1, pooling2, act, norm)) in enumerate(zip(param.weight, param.bais, layers[['stride1', 'stride2', 'pooling1', 'pooling2', 'act', 'norm']].values)):
+        for i, ((weight, bais), (stride1, stride2, pooling1, pooling2, act, norm)) in enumerate(zip(param, layers[['stride1', 'stride2', 'pooling1', 'pooling2', 'act', 'norm']].values)):
             with tf.name_scope('conv%d' % i):
                 layer = {}
                 image = tf.nn.conv2d(image, weight, strides=[1, stride1, stride2, 1], padding='SAME')
@@ -82,7 +85,7 @@ class ModelConv(list):
 
 class ModelFC(list):
     def __init__(self, data, param, layers, training=False, seed=None):
-        for i, (weight, bais, (act, norm, dropout)) in enumerate(zip(param.weight[:-1], param.bais[:-1], layers[['act', 'norm', 'dropout']].values)):
+        for i, ((weight, bais), (act, norm, dropout)) in enumerate(zip(param, layers[['act', 'norm', 'dropout']].values)):
             with tf.name_scope('fc%d' % i):
                 layer = {}
                 data = tf.matmul(data, weight)
@@ -106,11 +109,17 @@ class ModelFC(list):
                     layer['dropout'] = data
                 layer['output'] = data
                 list.append(self, layer)
+        self.output = data
+        self.param = param
+        self.training = training
+        self.seed = seed
+    
+    def __call__(self, weight, bais):
         with tf.name_scope('fc'):
             layer = {}
-            data = tf.matmul(data, param.weight[-1])
+            data = tf.matmul(self.output, weight)
             layer['matmul'] = data
-            data = data + param.bais[-1]
+            data = data + bais
             layer['add'] = data
             layer['output'] = data
             list.append(self, layer)
