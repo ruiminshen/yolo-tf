@@ -58,7 +58,7 @@ class ModelConv(list):
     def __init__(self, image, param, layers, training=False, seed=None):
         for i, ((weight, bais), (stride1, stride2, pooling1, pooling2, act, norm)) in enumerate(zip(param, layers[['stride1', 'stride2', 'pooling1', 'pooling2', 'act', 'norm']].values)):
             with tf.name_scope('conv%d' % i):
-                layer = {}
+                layer = {'image': image}
                 image = tf.nn.conv2d(image, weight, strides=[1, stride1, stride2, 1], padding='SAME')
                 layer['conv'] = image
                 image = tf.nn.bias_add(image, bais)
@@ -73,7 +73,8 @@ class ModelConv(list):
                     image = tf.nn.relu(image)
                     layer['act'] = image
                 elif act == 'lrelu':
-                    image = tf.maximum(.1 * image, image, name='lrelu')
+                    with tf.name_scope('lrelu'):
+                        image = tf.maximum(.1 * image, image, name='lrelu')
                     layer['act'] = image
                 if pooling1 > 0 and pooling2 > 0:
                     image = tf.nn.max_pool(image, ksize=[1, pooling1, pooling2, 1], strides=[1, pooling1, pooling2, 1], padding='SAME')
@@ -87,7 +88,7 @@ class ModelFC(list):
     def __init__(self, data, param, layers, training=False, seed=None):
         for i, ((weight, bais), (act, norm, dropout)) in enumerate(zip(param, layers[['act', 'norm', 'dropout']].values)):
             with tf.name_scope('fc%d' % i):
-                layer = {}
+                layer = {'data': data}
                 data = tf.matmul(data, weight)
                 layer['matmul'] = data
                 data = data + bais
@@ -102,7 +103,8 @@ class ModelFC(list):
                     data = tf.nn.relu(data)
                     layer['act'] = data
                 elif act == 'lrelu':
-                    data = tf.maximum(.1 * data, data, name='lrelu')
+                    with tf.name_scope('lrelu'):
+                        data = tf.maximum(.1 * data, data, name='lrelu')
                     layer['act'] = data
                 if 0 < dropout < 1 and training:
                     data = tf.nn.dropout(data, dropout, seed=seed)

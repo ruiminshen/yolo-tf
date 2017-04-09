@@ -15,10 +15,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import os
 import math
+import configparser
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import model
+import utils
 
 
 def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, boxes_per_cell, classes):
@@ -75,20 +79,20 @@ class Model(object):
                 end += cells * boxes_per_cell * 2
                 self.offset_xy = tf.reshape(self.fc.output[:, start:end], [-1, cells, boxes_per_cell, 2], name='offset_xy')
                 wh01_sqrt_base = tf.reshape(self.fc.output[:, end:], [-1, cells, boxes_per_cell, 2], name='wh01_sqrt_base')
-                wh01 = wh01_sqrt_base ** 2
+                wh01 = tf.identity(wh01_sqrt_base ** 2, name='wh01')
                 wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
                 self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
-                self.wh = wh01 * [cell_width, cell_height]
+                self.wh = tf.identity(wh01 * [cell_width, cell_height], name='wh')
                 _wh = self.wh / 2
-                self.offset_xy_min = self.offset_xy - _wh
-                self.offset_xy_max = self.offset_xy + _wh
-                self.areas = self.wh[:, :, :, 0] * self.wh[:, :, :, 1]
+                self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
+                self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
+                self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
             with tf.name_scope('xy'):
                 cell_xy = self.calc_cell_xy().reshape([1, cells, 1, 2])
-                self.xy = cell_xy + self.offset_xy
-                self.xy_min = cell_xy + self.offset_xy_min
-                self.xy_max = cell_xy + self.offset_xy_max
-            self.prob = tf.reshape(self.pred, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1)
+                self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
+                self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
+                self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
+            self.prob = tf.identity(tf.reshape(self.pred, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1), name='prob')
         self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight, _ in param_fc], name='regularizer')
         self.param_conv = param_conv
         self.param_fc = param_fc
@@ -123,11 +127,77 @@ class Loss(dict):
         with tf.name_scope('mask'):
             max_iou = tf.reduce_max(iou, 2, True, name='max_iou')
             mask_max_iou = tf.to_float(tf.equal(iou, max_iou, name='mask_max_iou'))
-            mask_best = self.mask * mask_max_iou
-            mask_normal = 1 - mask_best
+            mask_best = tf.identity(self.mask * mask_max_iou, name='mask_best')
+            mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         iou_diff = model.iou - iou
         with tf.name_scope('objectives'):
             self['pred'] = tf.nn.l2_loss(self.mask * model.pred - self.pred, name='pred')
             self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
             self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
+
+
+class Trainer(object):
+    def __init__(self, args, config, names, image, labels, section='yolo'):
+        self.width = config.getint(section, 'width')
+        self.height = config.getint(section, 'height')
+        layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
+        self.cell_width = utils.calc_pooled_size(self.width, layers_conv['pooling1'].values)
+        self.cell_height = utils.calc_pooled_size(self.height, layers_conv['pooling2'].values)
+        layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
+        self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
+        with tf.variable_scope('param'):
+            self.param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
+            inputs = self.cell_width * self.cell_height * self.param_conv.get_size(-1)
+            self.param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
+            outputs = self.cell_width * self.cell_height * (len(names) + self.boxes_per_cell * 5)
+            self.param_fc(outputs)
+        with tf.name_scope('model'):
+            self.model = Model(image, self.param_conv, self.param_fc, layers_conv, layers_fc, len(names), self.boxes_per_cell, training=True, seed=args.seed)
+        with tf.name_scope('loss'):
+            self.loss_train = Loss(self.model, *labels)
+            with tf.variable_scope('hparam'):
+                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(section + '_hparam')])
+                self.hparam_regularizer = tf.Variable(config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
+            self.loss = tf.reduce_sum([self.loss_train[key] * self.hparam[key] for key in self.loss_train], name='loss_objectives') + tf.multiply(self.hparam_regularizer, self.model.regularizer, name='loss_regularizer')
+            for key in self.loss_train:
+                tf.summary.scalar(key, self.loss_train[key])
+            tf.summary.scalar('regularizer', self.model.regularizer)
+            tf.summary.scalar('loss', self.loss)
+        self.args = args
+        self.config = config
+    
+    def setup_histogram(self):
+        if self.config.getboolean('histogram', 'param'):
+            if self.config.getboolean('histogram_param_conv', 'weight'):
+                for weight, _ in self.param_conv:
+                    tf.summary.histogram(weight.name, weight)
+            if self.config.getboolean('histogram_param_conv', 'bais'):
+                for _, bais in self.param_conv:
+                    tf.summary.histogram(bais.name, bais)
+            if self.config.getboolean('histogram_param_fc', 'weight'):
+                for weight, _ in self.param_fc:
+                    tf.summary.histogram(weight.name, weight)
+            if self.config.getboolean('histogram_param_fc', 'bais'):
+                for _, bais in self.param_fc:
+                    tf.summary.histogram(bais.name, bais)
+        if self.config.getboolean('histogram', 'model'):
+            for layer in self.model.conv:
+                for key, value in layer.items():
+                    try:
+                        if self.config.getboolean('histogram_model_conv', key):
+                            tf.summary.histogram(value.name, value)
+                    except configparser.NoOptionError:
+                        pass
+            for layer in self.model.fc:
+                for key, value in layer.items():
+                    try:
+                        if self.config.getboolean('histogram_model_fc', key):
+                            tf.summary.histogram(value.name, value)
+                    except configparser.NoOptionError:
+                        pass
+    
+    def log_hparam(self, sess, logger):
+        keys, values = zip(*self.hparam.items())
+        logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
+        logger.info('hparam_regularizer=%f' % sess.run(self.hparam_regularizer))

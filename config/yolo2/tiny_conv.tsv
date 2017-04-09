@@ -1,0 +1,9 @@
+size	kernel1	kernel2	stride1	stride2	pooling1	pooling2	act	norm
+16	3	3	1	1	2	2	lrelu	
+32	3	3	1	1	2	2	lrelu	
+64	3	3	1	1	2	2	lrelu	
+128	3	3	1	1	2	2	lrelu	
+256	3	3	1	1	2	2	lrelu	
+512	3	3	1	1	2	2	lrelu	
+512	3	3	1	1	0	0	lrelu	
+1024	3	3	1	1	0	0	lrelu	

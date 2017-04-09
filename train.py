@@ -23,10 +23,8 @@ import pickle
 import shutil
 import time
 import multiprocessing
-import pandas as pd
 import tensorflow as tf
 from tensorflow.python.framework import ops
-import model
 import utils
 
 
@@ -37,7 +35,7 @@ def output(sess, step, summary, summary_writer, saver, path_model):
         summary_writer.add_summary(sess.run(summary), step)
     if step % args.save_cycle == 0:
         os.makedirs(os.path.dirname(path_model), exist_ok=True)
-        saver.save(sess, path_model)
+        saver.save(sess, path_model, step)
         logger.info('model saved into: ' + path_model)
 
 
@@ -48,7 +46,7 @@ def main():
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
     if args.reset and os.path.exists(modeldir):
-        logger.warn('delete model_train: ' + modeldir)
+        logger.warn('delete modeldir: ' + modeldir)
         shutil.rmtree(modeldir, ignore_errors=True)
     logdir = os.path.join(yolodir, 'logdir')
     if args.delete:
@@ -62,21 +60,7 @@ def main():
     logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-    cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
-    cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
-    boxes_per_cell = config.getint(section, 'boxes_per_cell')
     with tf.Session() as sess:
-        logger.info('init param')
-        with tf.variable_scope('param'):
-            param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = cell_width * cell_height * param_conv.get_size(-1)
-            param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
-            outputs = cell_width * cell_height * (len(names) + boxes_per_cell * 5)
-            param_fc(outputs)
-        for var in tf.trainable_variables():
-            tf.summary.histogram(var.name, var)
         with tf.name_scope('data'):
             with tf.device('/cpu:0'):
                 imagepaths = tf.train.string_input_producer(data[0], shuffle=False)
@@ -88,23 +72,12 @@ def main():
                 labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
                 data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
-        logger.info('init model')
-        with tf.name_scope('train'):
-            model_train = yolo.Model(data[0], param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell, training=True, seed=args.seed)
-        with tf.name_scope('loss'):
-            loss_train = yolo.Loss(model_train, *data[1:])
-            with tf.variable_scope('hparam'):
-                hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(section + '_hparam')])
-                hparam_regularizer = tf.Variable(config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
-            loss = tf.reduce_sum([loss_train[key] * hparam[key] for key in loss_train], name='loss_objectives') + tf.multiply(hparam_regularizer, model_train.regularizer, name='loss_regularizer')
-            for key in loss_train:
-                tf.summary.scalar(key, loss_train[key])
-            tf.summary.scalar('regularizer', model_train.regularizer)
-            tf.summary.scalar('loss', loss)
+        trainer = yolo.Trainer(args, config, names, data[0], data[1:])
+        trainer.setup_histogram()
         with tf.name_scope('optimizer'):
             step = tf.Variable(0, name='step')
             logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(loss, global_step=step)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(trainer.loss, global_step=step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()
@@ -116,8 +89,6 @@ def main():
             saver.restore(sess, path_model)
         except:
             logger.warn('error occurs while loading model: ' + path_model)
-        logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
-        logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
         cmd = 'tensorboard --logdir ' + logdir
         logger.info('run: ' + cmd)
         try:
@@ -131,10 +102,9 @@ def main():
         coord.join(threads)
         logger.info('save model')
         os.makedirs(os.path.dirname(path_model), exist_ok=True)
-        saver.save(sess, path_model)
+        saver.save(sess, path_model, step)
         logger.info('model saved into: ' + path_model)
-        logger.info(', '.join(['%s=%f' % (key, p) for key, p in zip(hparam.keys(), sess.run([hparam[key] for key in hparam]))]))
-        logger.info('hparam_regularizer=%f' % sess.run(hparam_regularizer))
+        trainer.log_hparam(sess, logger)
     #os.system(cmd)
 
 

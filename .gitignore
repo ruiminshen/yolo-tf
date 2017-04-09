@@ -4,4 +4,3 @@ __pycache__
 .pydevproject
 .settings/
 .idea/
-demo_*.py
