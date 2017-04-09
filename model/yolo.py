@@ -15,16 +15,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os
-import argparse
-import configparser
 import math
-import pickle
 import numpy as np
-import pandas as pd
 import tensorflow as tf
-import voc
-import utils
 import model
 
 
@@ -138,43 +131,3 @@ class Loss(dict):
             self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
             self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
-
-
-def main():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    section = os.path.splitext(os.path.basename(__file__))[0]
-    with open(os.path.expanduser(os.path.expandvars(args.names)), 'r') as f:
-        names = [line.strip() for line in f]
-    path = os.path.expanduser(os.path.expandvars(args.path))
-    print('loading dataset from ' + path)
-    imagenames, imageshapes, labels = voc.load_dataset(path, names)
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-    cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
-    cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    boxes_per_cell = config.getint(section, 'boxes_per_cell')
-    print('size=%d, (width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d), boxes_per_cell=%d' % (len(imagenames), width, height, cell_width, cell_height, boxes_per_cell))
-    labels = transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, boxes_per_cell, len(names))
-    imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]
-    path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
-    with open(path, 'wb') as f:
-        pickle.dump(names, f)
-        pickle.dump((imagepaths, *labels), f)
-    print('cache saved into ' + path)
-
-
-def make_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', help='PASCAL VOC data directory')
-    parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-n', '--names', default='names20', help='names file')
-    return parser.parse_args()
-
-if __name__ == '__main__':
-    args = make_args()
-    config = configparser.ConfigParser()
-    assert os.path.exists(args.config)
-    config.read(args.config)
-    main()
