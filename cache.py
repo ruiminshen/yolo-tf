@@ -44,7 +44,6 @@ def main():
     imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     with open(path, 'wb') as f:
-        pickle.dump(names, f)
         pickle.dump((imagepaths, *labels), f)
     print('cache saved into ' + path)
 

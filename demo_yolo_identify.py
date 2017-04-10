@@ -105,27 +105,16 @@ def main():
     yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
+    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+        names = [line.strip() for line in f]
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
-        names = pickle.load(f)
         data = pickle.load(f)
     logger.info('size: %d' % len(data[0]))
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-    cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
-    cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
-    boxes_per_cell = config.getint(section, 'boxes_per_cell')
     with tf.Session() as sess:
-        logger.info('init param')
-        with tf.variable_scope('param'):
-            param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = cell_width * cell_height * param_conv.get_size(-1)
-            param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
-            outputs = cell_width * cell_height * (len(names) + boxes_per_cell * 5)
-            param_fc(outputs)
         with tf.name_scope('data'):
             with tf.device('/cpu:0'):
                 imagepath = data[0][args.index]
@@ -136,16 +125,16 @@ def main():
                 image = tf.image.per_image_standardization(image)
                 image = tf.expand_dims(image, 0)
                 labels = [tf.expand_dims(ops.convert_to_tensor(l[args.index], dtype=tf.float32), 0) for l in data[1:]]
-        logger.info('init model')
-        with tf.name_scope('1'):
-            model1 = yolo.Model(image, param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell)
+        modeler = yolo.Modeler(args, config)
+        modeler.param()
+        modeler.eval(image)
         with tf.name_scope('loss'):
-            loss = yolo.Loss(model1, *labels)
+            loss = yolo.Loss(modeler.model_eval, *labels)
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
         saver.restore(sess, path_model)
-        _ = Drawer(sess, names, cell_width, cell_height, sess.run(image[0]), sess.run([l[0] for l in labels]), model1, loss)
+        _ = Drawer(sess, names, modeler.cell_width, modeler.cell_height, sess.run(image[0]), sess.run([l[0] for l in labels]), modeler.model_eval, loss)
         plt.show()
 
 

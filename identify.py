@@ -18,15 +18,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import argparse
 import configparser
-import pickle
 import importlib
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 from tensorflow.python.framework import ops
-import model
 import utils
 
 
@@ -65,33 +62,17 @@ def main():
     yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
-    path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
-    logger.info('loading cache from ' + path)
-    with open(path, 'rb') as f:
-        names = pickle.load(f)
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-    cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
-    cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
-    boxes_per_cell = config.getint(section, 'boxes_per_cell')
     with tf.Session() as sess:
-        logger.info('init param')
-        with tf.variable_scope('param'):
-            param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = cell_width * cell_height * param_conv.get_size(-1)
-            param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
-            outputs = cell_width * cell_height * (len(names) + boxes_per_cell * 5)
-            param_fc(outputs)
         with tf.name_scope('data'):
             image = tf.image.decode_jpeg(tf.read_file(ops.convert_to_tensor(args.image)), channels=3)
             image = tf.image.resize_images(image, [height, width])
             image = tf.image.per_image_standardization(image)
             image = tf.expand_dims(image, 0)
-        logger.info('init model')
-        with tf.name_scope('1'):
-            model1 = yolo.Model(image, param_conv, param_fc, layers_conv, layers_fc, len(names), boxes_per_cell)
+        modeler = yolo.Modeler(args, config)
+        modeler.param()
+        modeler.eval(image)
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
@@ -103,16 +84,16 @@ def main():
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image)
-        prob, xy_min, xy_max = sess.run([model1.prob * tf.to_float(model1.prob > args.threshold), model1.xy_min, model1.xy_max])
+        prob, xy_min, xy_max = sess.run([modeler.model_eval.prob * tf.to_float(modeler.model_eval.prob > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max])
         boxes = non_max_suppress(prob[0], xy_min[0], xy_max[0])
         for _prob, _xy_min, _xy_max in boxes:
             index = np.argmax(_prob)
             if _prob[index] > args.threshold:
                 wh = _xy_max - _xy_min
-                _xy_min = _xy_min * [width, height] / [cell_width, cell_height]
-                _wh = wh * [width, height] / [cell_width, cell_height]
+                _xy_min = _xy_min * [width, height] / [modeler.cell_width, modeler.cell_height]
+                _wh = wh * [width, height] / [modeler.cell_width, modeler.cell_height]
                 ax.add_patch(patches.Rectangle(_xy_min, _wh[0], _wh[1], linewidth=1, edgecolor='r', facecolor='none'))
-                ax.annotate(names[index], _xy_min, color='red')
+                ax.annotate(modeler.names[index], _xy_min, color='red')
         ax.set_xticks([])
         ax.set_yticks([])
         plt.show()

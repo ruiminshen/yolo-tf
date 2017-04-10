@@ -55,7 +55,6 @@ def main():
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
-        names = pickle.load(f)
         data = pickle.load(f)
     logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
     width = config.getint(section, 'width')
@@ -72,12 +71,14 @@ def main():
                 labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
                 data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=args.batch_size * config.getint('queue', 'capacity'), min_after_dequeue=args.batch_size * config.getint('queue', 'min'), num_threads=multiprocessing.cpu_count())
-        trainer = yolo.Trainer(args, config, names, data[0], data[1:])
-        trainer.setup_histogram()
+        modeler = yolo.Modeler(args, config)
+        modeler.param()
+        modeler.train(data[0], data[1:])
+        modeler.setup_histogram()
         with tf.name_scope('optimizer'):
             step = tf.Variable(0, name='step')
             logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(trainer.loss, global_step=step)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(modeler.loss, global_step=step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, time.strftime('%Y-%m-%d_%H-%M-%S')), sess.graph)
         tf.global_variables_initializer().run()
@@ -104,7 +105,7 @@ def main():
         os.makedirs(os.path.dirname(path_model), exist_ok=True)
         saver.save(sess, path_model, step)
         logger.info('model saved into: ' + path_model)
-        trainer.log_hparam(sess, logger)
+        modeler.log_hparam(sess, logger)
     #os.system(cmd)
 
 

@@ -137,35 +137,43 @@ class Loss(dict):
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
 
 
-class Trainer(object):
-    def __init__(self, args, config, names, image, labels, section='yolo'):
-        self.width = config.getint(section, 'width')
-        self.height = config.getint(section, 'height')
-        layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-        self.cell_width = utils.calc_pooled_size(self.width, layers_conv['pooling1'].values)
-        self.cell_height = utils.calc_pooled_size(self.height, layers_conv['pooling2'].values)
-        layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
-        self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
-        with tf.variable_scope('param'):
-            self.param_conv = model.ParamConv(3, layers_conv, seed=args.seed)
-            inputs = self.cell_width * self.cell_height * self.param_conv.get_size(-1)
-            self.param_fc = model.ParamFC(inputs, layers_fc, seed=args.seed)
-            outputs = self.cell_width * self.cell_height * (len(names) + self.boxes_per_cell * 5)
-            self.param_fc(outputs)
-        with tf.name_scope('model'):
-            self.model = Model(image, self.param_conv, self.param_fc, layers_conv, layers_fc, len(names), self.boxes_per_cell, training=True, seed=args.seed)
-        with tf.name_scope('loss'):
-            self.loss_train = Loss(self.model, *labels)
-            with tf.variable_scope('hparam'):
-                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in config.items(section + '_hparam')])
-                self.hparam_regularizer = tf.Variable(config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
-            self.loss = tf.reduce_sum([self.loss_train[key] * self.hparam[key] for key in self.loss_train], name='loss_objectives') + tf.multiply(self.hparam_regularizer, self.model.regularizer, name='loss_regularizer')
-            for key in self.loss_train:
-                tf.summary.scalar(key, self.loss_train[key])
-            tf.summary.scalar('regularizer', self.model.regularizer)
-            tf.summary.scalar('loss', self.loss)
+class Modeler(object):
+    def __init__(self, args, config):
+        section = __name__.split('.')[-1]
         self.args = args
         self.config = config
+        with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+            self.names = [line.strip() for line in f]
+        self.width = config.getint(section, 'width')
+        self.height = config.getint(section, 'height')
+        self.layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
+        self.cell_width = utils.calc_pooled_size(self.width, self.layers_conv['pooling1'].values)
+        self.cell_height = utils.calc_pooled_size(self.height, self.layers_conv['pooling2'].values)
+        self.layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
+        self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
+    
+    def param(self, scope='param'):
+        with tf.variable_scope(scope):
+            self.param_conv = model.ParamConv(3, self.layers_conv, seed=self.args.seed)
+            inputs = self.cell_width * self.cell_height * self.param_conv.get_size(-1)
+            self.param_fc = model.ParamFC(inputs, self.layers_fc, seed=self.args.seed)
+            outputs = self.cell_width * self.cell_height * (len(self.names) + self.boxes_per_cell * 5)
+            self.param_fc(outputs)
+    
+    def train(self, image, labels, scope='train'):
+        section = __name__.split('.')[-1]
+        with tf.name_scope(scope):
+            self.model_train = Model(image, self.param_conv, self.param_fc, self.layers_conv, self.layers_fc, len(self.names), self.boxes_per_cell, training=True, seed=self.args.seed)
+            with tf.name_scope('loss'):
+                self.loss_train = Loss(self.model_train, *labels)
+                with tf.variable_scope('hparam'):
+                    self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
+                    self.hparam_regularizer = tf.Variable(self.config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
+                self.loss = tf.reduce_sum([self.loss_train[key] * self.hparam[key] for key in self.loss_train], name='loss_objectives') + tf.multiply(self.hparam_regularizer, self.model_train.regularizer, name='loss_regularizer')
+                for key in self.loss_train:
+                    tf.summary.scalar(key, self.loss_train[key])
+                tf.summary.scalar('regularizer', self.model_train.regularizer)
+                tf.summary.scalar('loss', self.loss)
     
     def setup_histogram(self):
         if self.config.getboolean('histogram', 'param'):
@@ -182,14 +190,14 @@ class Trainer(object):
                 for _, bais in self.param_fc:
                     tf.summary.histogram(bais.name, bais)
         if self.config.getboolean('histogram', 'model'):
-            for layer in self.model.conv:
+            for layer in self.model_train.conv:
                 for key, value in layer.items():
                     try:
                         if self.config.getboolean('histogram_model_conv', key):
                             tf.summary.histogram(value.name, value)
                     except configparser.NoOptionError:
                         pass
-            for layer in self.model.fc:
+            for layer in self.model_train.fc:
                 for key, value in layer.items():
                     try:
                         if self.config.getboolean('histogram_model_fc', key):
@@ -201,3 +209,7 @@ class Trainer(object):
         keys, values = zip(*self.hparam.items())
         logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
         logger.info('hparam_regularizer=%f' % sess.run(self.hparam_regularizer))
+    
+    def eval(self, image, scope='eval'):
+        with tf.name_scope(scope):
+            self.model_eval = Model(image, self.param_conv, self.param_fc, self.layers_conv, self.layers_fc, len(self.names), self.boxes_per_cell)
