@@ -29,6 +29,13 @@ class ParamConv(list):
                 list.append(self, (weight, bais))
                 channels = size
     
+    def __call__(self, outputs, kernel1=1, kernel2=1, seed=None):
+        channels = self.get_size(-1)
+        with tf.variable_scope('conv'):
+            weight = tf.Variable(tf.truncated_normal([kernel1, kernel2, channels, outputs], stddev=1.0 / math.sqrt(channels * kernel1 * kernel2), seed=seed), name='weight')
+            bais = tf.Variable(tf.zeros([outputs]), name='bais')
+            list.append(self, (weight, bais))
+    
     def get_size(self, i):
         return list.__getitem__(self, i)[1].get_shape()[0].value
 
@@ -81,6 +88,17 @@ class ModelConv(list):
                     layer['pool'] = image
                 layer['output'] = image
                 list.append(self, layer)
+        self.output = image
+    
+    def __call__(self, weight, bais, strides=[1, 1, 1, 1], padding='SAME'):
+        with tf.name_scope('conv'):
+            layer = {}
+            image = tf.nn.conv2d(self.output, weight, strides=strides, padding=padding)
+            layer['conv'] = image
+            image = tf.nn.bias_add(image, bais)
+            layer['add'] = image
+            layer['output'] = image
+            list.append(self, layer)
         self.output = image
 
 

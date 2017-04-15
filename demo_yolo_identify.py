@@ -61,10 +61,10 @@ class Drawer(object):
         ix = int(event.xdata * self.cell_width / image_width)
         iy = int(event.ydata * self.cell_height / image_height)
         index = iy * self.cell_width + ix
-        pred, iou, xy_min, wh = self.sess.run([self.model.pred[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]])
+        prob, iou, xy_min, wh = self.sess.run([self.model.prob[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]])
         xy_min = xy_min * [image_width, image_height] / [self.cell_width, self.cell_height]
         wh = wh * [image_width, image_height] / [self.cell_width, self.cell_height]
-        name = self.names[np.argmax(pred)]
+        name = self.names[np.argmax(prob)]
         self.fig.suptitle(name)
         for color, conf, (x, y), (w, h) in zip(self.colors, iou, xy_min, wh):
             self.plots.append(self.ax.add_patch(patches.Rectangle((x, y), w, h, linewidth=1, edgecolor=color, facecolor='none')))
@@ -72,7 +72,7 @@ class Drawer(object):
         self.fig.canvas.draw()
 
 
-def draw_label(ax, names, cell_width, cell_height, image_width, image_height, index, mask, pred, coords, xy_min, xy_max, areas, rtol=1e-5):
+def draw_label(ax, names, cell_width, cell_height, image_width, image_height, index, mask, prob, coords, xy_min, xy_max, areas, rtol=1e-5):
     coords = coords[0]
     xy_min = xy_min[0]
     xy_max = xy_max[0]
@@ -82,7 +82,7 @@ def draw_label(ax, names, cell_width, cell_height, image_width, image_height, in
         iy = index // cell_width
         ix = index % cell_width
         plots.append(ax.add_patch(patches.Rectangle((ix * image_width / cell_width, iy * image_height / cell_height), image_width / cell_width, image_height / cell_height, linewidth=0, facecolor='red', alpha=.2)))
-        name = names[np.argmax(pred)]
+        name = names[np.argmax(prob)]
         #check coords
         offset_x, offset_y, _w_sqrt, _h_sqrt = coords
         cell_x, cell_y = ix + offset_x, iy + offset_y

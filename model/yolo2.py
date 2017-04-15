@@ -28,7 +28,7 @@ import utils
 def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes):
     cells = cell_height * cell_width
     mask = np.zeros([len(labels), cells, 1])
-    prob = np.zeros([len(labels), cells, classes])
+    prob = np.zeros([len(labels), cells, 1, classes])
     coords = np.zeros([len(labels), cells, 1, 4])
     offset_xy_min = np.zeros([len(labels), cells, 1, 2])
     offset_xy_max = np.zeros([len(labels), cells, 1, 2])
@@ -48,8 +48,8 @@ def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_he
             _w = float(xmax - xmin) / image_width
             _h = float(ymax - ymin) / image_height
             mask[i, index, :] = 1
-            prob[i, index, :] = [0] * classes
-            prob[i, index, c] = 1
+            prob[i, index, 0, :] = [0] * classes
+            prob[i, index, 0, c] = 1
             coords[i, index, 0, :] = [offset_x, offset_y, math.sqrt(_w), math.sqrt(_h)]
             offset_xy_min[i, index, 0, :] = [offset_x - _w / 2 * cell_width, offset_y - _h / 2 * cell_height]
             offset_xy_max[i, index, 0, :] = [offset_x + _w / 2 * cell_width, offset_y + _h / 2 * cell_height]
@@ -60,43 +60,42 @@ def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_he
 
 
 class Model(object):
-    def __init__(self, image, param_conv, param_fc, layers_conv, layers_fc, classes, boxes_per_cell, training=False, seed=None):
+    def __init__(self, image, param_conv, layers_conv, classes, anchors, training=False, seed=None):
         self.image = image
         self.conv = model.ModelConv(self.image, param_conv, layers_conv, training, seed)
-        data_fc = tf.reshape(self.conv.output, [self.conv.output.get_shape()[0].value, -1], name='data_fc')
-        self.fc = model.ModelFC(data_fc, param_fc, layers_fc, training, seed)
-        self.fc(*param_fc[-1])
+        self.conv(*param_conv[-1])
+        boxes_per_cell, _ = anchors.shape
         _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
         cells = cell_height * cell_width
+        output = tf.reshape(self.conv.output, [-1, cells, boxes_per_cell, 5 + classes], name='output')
         with tf.name_scope('labels'):
-            end = cells * classes
-            self.prob = tf.reshape(self.fc.output[:, :end], [-1, cells, classes], name='prob')
-            output = tf.reshape(self.fc.output[:, end:], [-1, cells, boxes_per_cell, 5], name='output')
+            output_sigmoid = tf.nn.sigmoid(output[:, :, :, :3])
             end = 1
-            self.iou = tf.identity(output[:, :, :, end], name='iou')
+            self.iou = output_sigmoid[:, :, :, end]
             start = end
             end += 2
-            self.offset_xy = tf.identity(output[:, :, :, start:end], name='offset_xy')
-            wh01_sqrt_base = tf.identity(output[:, :, :, end:], name='wh01_sqrt_base')
-            wh01 = tf.identity(wh01_sqrt_base ** 2, name='wh01')
-            wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
-            self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
-            self.wh = tf.identity(wh01 * [cell_width, cell_height], name='wh')
+            self.offset_xy = tf.identity(output_sigmoid[:, :, :, start:end], name='offset_xy')
+            start = end
+            end += 2
+            self.wh = tf.identity(tf.exp(output[:, :, :, start:end]) * np.reshape(anchors, [1, 1, boxes_per_cell, -1]), name='wh')
+            self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
             _wh = self.wh / 2
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
             self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
-            self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
+            self.wh01 = tf.identity(self.wh / np.reshape([cell_width, cell_height], [1, 1, 1, 2]), name='wh01')
+            self.wh01_sqrt = tf.sqrt(self.wh01, name='wh01_sqrt')
+            self.coords = tf.concat([self.offset_xy, self.wh01_sqrt], -1, name='coords')
+            self.prob = tf.nn.softmax(output[:, :, :, end:])
         with tf.name_scope('xy'):
             cell_xy = self.calc_cell_xy(cell_height, cell_width).reshape([1, cells, 1, 2])
             self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
-        self.conf = tf.identity(tf.reshape(self.prob, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1), name='conf')
-        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight, _ in param_fc], name='regularizer')
+        self.conf = tf.identity(self.prob * tf.expand_dims(self.iou, -1), name='conf')
+        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight, _ in param_conv], name='regularizer')
         self.param_conv = param_conv
-        self.param_fc = param_fc
         self.classes = classes
-        self.boxes_per_cell = boxes_per_cell
+        self.anchors = anchors
     
     def calc_cell_xy(self, cell_height, cell_width):
         cell_base = np.zeros([cell_height, cell_width, 2])
@@ -129,7 +128,7 @@ class Loss(dict):
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         iou_diff = model.iou - iou
         with tf.name_scope('objectives'):
-            self['prob'] = tf.nn.l2_loss(self.mask * model.prob - self.prob, name='prob')
+            self['prob'] = tf.nn.l2_loss(tf.expand_dims(self.mask, -1) * model.prob - self.prob, name='prob')
             self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
             self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
@@ -147,21 +146,19 @@ class Modeler(object):
         self.layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
         self.cell_width = utils.calc_pooled_size(self.width, self.layers_conv['pooling1'].values)
         self.cell_height = utils.calc_pooled_size(self.height, self.layers_conv['pooling2'].values)
-        self.layers_fc = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'fc'))), sep='\t')
-        self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
+        self.anchors = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'anchors'))), sep='\t').values
     
     def param(self, scope='param'):
         with tf.variable_scope(scope):
             self.param_conv = model.ParamConv(3, self.layers_conv, seed=self.args.seed)
-            inputs = self.cell_width * self.cell_height * self.param_conv.get_size(-1)
-            self.param_fc = model.ParamFC(inputs, self.layers_fc, seed=self.args.seed)
-            outputs = self.cell_width * self.cell_height * (len(self.names) + self.boxes_per_cell * 5)
-            self.param_fc(outputs)
+            boxes_per_cell = self.anchors.shape[0]
+            outputs = boxes_per_cell * (5 + len(self.names))
+            self.param_conv(outputs)
     
     def train(self, image, labels, scope='train'):
         section = __name__.split('.')[-1]
         with tf.name_scope(scope):
-            self.model_train = Model(image, self.param_conv, self.param_fc, self.layers_conv, self.layers_fc, len(self.names), self.boxes_per_cell, training=True, seed=self.args.seed)
+            self.model_train = Model(image, self.param_conv, self.layers_conv, len(self.names), self.anchors, training=True, seed=self.args.seed)
             with tf.name_scope('loss'):
                 self.loss_train = Loss(self.model_train, *labels)
                 with tf.variable_scope('hparam'):
@@ -181,24 +178,11 @@ class Modeler(object):
             if self.config.getboolean('histogram_param_conv', 'bais'):
                 for _, bais in self.param_conv:
                     tf.summary.histogram(bais.name, bais)
-            if self.config.getboolean('histogram_param_fc', 'weight'):
-                for weight, _ in self.param_fc:
-                    tf.summary.histogram(weight.name, weight)
-            if self.config.getboolean('histogram_param_fc', 'bais'):
-                for _, bais in self.param_fc:
-                    tf.summary.histogram(bais.name, bais)
         if self.config.getboolean('histogram', 'model'):
             for layer in self.model_train.conv:
                 for key, value in layer.items():
                     try:
                         if self.config.getboolean('histogram_model_conv', key):
-                            tf.summary.histogram(value.name, value)
-                    except configparser.NoOptionError:
-                        pass
-            for layer in self.model_train.fc:
-                for key, value in layer.items():
-                    try:
-                        if self.config.getboolean('histogram_model_fc', key):
                             tf.summary.histogram(value.name, value)
                     except configparser.NoOptionError:
                         pass
@@ -210,4 +194,4 @@ class Modeler(object):
     
     def eval(self, image, scope='eval'):
         with tf.name_scope(scope):
-            self.model_eval = Model(image, self.param_conv, self.param_fc, self.layers_conv, self.layers_fc, len(self.names), self.boxes_per_cell)
+            self.model_eval = Model(image, self.param_conv, self.layers_conv, len(self.names), self.anchors)

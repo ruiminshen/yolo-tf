@@ -38,9 +38,8 @@ def main():
     layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
     cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
     cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
-    boxes_per_cell = config.getint(section, 'boxes_per_cell')
-    print('size=%d, (width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d), boxes_per_cell=%d' % (len(imagenames), width, height, cell_width, cell_height, boxes_per_cell))
-    labels = yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, boxes_per_cell, len(names))
+    print('size=%d, (width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (len(imagenames), width, height, cell_width, cell_height))
+    labels = yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, len(names))
     imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     with open(path, 'wb') as f:

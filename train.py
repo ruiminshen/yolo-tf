@@ -28,15 +28,19 @@ from tensorflow.python.framework import ops
 import utils
 
 
+def save(sess, saver, path_model):
+    os.makedirs(os.path.dirname(path_model), exist_ok=True)
+    saver.save(sess, path_model)
+    logger.info('model saved into: ' + path_model)
+
+
 def output(sess, step, summary, summary_writer, saver, path_model):
     if step % args.output_cycle == 0:
         evaluation = step * args.batch_size
         logger.info('evaluation=%d/%d' % (evaluation, args.evaluation))
         summary_writer.add_summary(sess.run(summary), step)
     if step % args.save_cycle == 0:
-        os.makedirs(os.path.dirname(path_model), exist_ok=True)
-        saver.save(sess, path_model, step)
-        logger.info('model saved into: ' + path_model)
+        save(sess, saver, path_model)
 
 
 def main():
@@ -101,10 +105,7 @@ def main():
             logger.warn('keyboard interrupt captured')
         coord.request_stop()
         coord.join(threads)
-        logger.info('save model')
-        os.makedirs(os.path.dirname(path_model), exist_ok=True)
-        saver.save(sess, path_model, step)
-        logger.info('model saved into: ' + path_model)
+        save(sess, saver, path_model)
         modeler.log_hparam(sess, logger)
     #os.system(cmd)
 

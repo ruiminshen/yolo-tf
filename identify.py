@@ -84,7 +84,7 @@ def main():
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image)
-        prob, xy_min, xy_max = sess.run([modeler.model_eval.prob * tf.to_float(modeler.model_eval.prob > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max])
+        prob, xy_min, xy_max = sess.run([modeler.model_eval.conf * tf.to_float(modeler.model_eval.conf > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max])
         boxes = non_max_suppress(prob[0], xy_min[0], xy_max[0])
         for _prob, _xy_min, _xy_max in boxes:
             index = np.argmax(_prob)
