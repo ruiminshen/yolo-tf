@@ -65,7 +65,7 @@ class Model(object):
         self.conv = model.ModelConv(self.image, param_conv, layers_conv, training, seed)
         data_fc = tf.reshape(self.conv.output, [self.conv.output.get_shape()[0].value, -1], name='data_fc')
         self.fc = model.ModelFC(data_fc, param_fc, layers_fc, training, seed)
-        self.fc(*param_fc[-1])
+        self.fc(param_fc[-1])
         _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
         cells = cell_height * cell_width
         with tf.name_scope('labels'):
@@ -92,7 +92,7 @@ class Model(object):
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
         self.conf = tf.identity(tf.reshape(self.prob, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1), name='conf')
-        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight, _ in param_fc], name='regularizer')
+        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(p['weight']) for p in param_fc], name='regularizer')
         self.param_conv = param_conv
         self.param_fc = param_fc
         self.classes = classes

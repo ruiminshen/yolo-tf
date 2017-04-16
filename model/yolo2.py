@@ -63,7 +63,7 @@ class Model(object):
     def __init__(self, image, param_conv, layers_conv, classes, anchors, training=False, seed=None):
         self.image = image
         self.conv = model.ModelConv(self.image, param_conv, layers_conv, training, seed)
-        self.conv(*param_conv[-1])
+        self.conv(param_conv[-1])
         boxes_per_cell, _ = anchors.shape
         _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
         cells = cell_height * cell_width
@@ -92,7 +92,7 @@ class Model(object):
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
         self.conf = tf.identity(self.prob * tf.expand_dims(self.iou, -1), name='conf')
-        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(weight) for weight, _ in param_conv], name='regularizer')
+        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(p['weight']) for p in param_conv], name='regularizer')
         self.param_conv = param_conv
         self.classes = classes
         self.anchors = anchors

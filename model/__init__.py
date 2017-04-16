@@ -22,60 +22,77 @@ import tensorflow as tf
 class ParamConv(list):
     def __init__(self, channels, layers, seed=None):
         self.channels = channels
-        for i, (size, kernel1, kernel2) in enumerate(layers[['size', 'kernel1', 'kernel2']].values):
+        for i, (size, kernel1, kernel2, norm) in enumerate(layers[['size', 'kernel1', 'kernel2', 'norm']].values):
             with tf.variable_scope('conv%d' % i):
+                param = {}
                 weight = tf.Variable(tf.truncated_normal([kernel1, kernel2, channels, size], stddev=1.0 / math.sqrt(channels * kernel1 * kernel2), seed=seed), name='weight')
+                param['weight'] = weight
                 bais = tf.Variable(tf.zeros([size]), name='bais')
-                list.append(self, (weight, bais))
+                param['bais'] = bais
+                if norm == 'bn':
+                    scale = tf.Variable(tf.ones([size]), name='scale')
+                    param['scale'] = scale
+                list.append(self, param)
                 channels = size
     
     def __call__(self, outputs, kernel1=1, kernel2=1, seed=None):
         channels = self.get_size(-1)
         with tf.variable_scope('conv'):
+            param = {}
             weight = tf.Variable(tf.truncated_normal([kernel1, kernel2, channels, outputs], stddev=1.0 / math.sqrt(channels * kernel1 * kernel2), seed=seed), name='weight')
+            param['weight'] = weight
             bais = tf.Variable(tf.zeros([outputs]), name='bais')
-            list.append(self, (weight, bais))
+            param['bais'] = bais
+            list.append(self, param)
     
     def get_size(self, i):
-        return list.__getitem__(self, i)[1].get_shape()[0].value
+        return list.__getitem__(self, i)['bais'].get_shape()[0].value
 
 
 class ParamFC(list):
     def __init__(self, inputs, layers, seed=None):
-        for i, size in enumerate(layers['size'].values):
+        for i, (size, norm) in enumerate(layers[['size', 'norm']].values):
             with tf.variable_scope('fc%d' % i):
+                param = {}
                 weight = tf.Variable(tf.truncated_normal([inputs, size], stddev=1.0 / math.sqrt(inputs), seed=seed), name='weight')
+                param['weight'] = weight
                 bais = tf.Variable(tf.zeros([size]), name='bais')
-                list.append(self, (weight, bais))
+                param['bais'] = bais
+                if norm == 'bn':
+                    scale = tf.Variable(tf.ones([size]), name='scale')
+                    param['scale'] = scale
+                list.append(self, param)
                 inputs = size
         self.seed = seed
     
     def __call__(self, outputs):
         inputs = self.get_size(-1)
         with tf.variable_scope('fc'):
+            param = {}
             weight = tf.Variable(tf.truncated_normal([inputs, outputs], stddev=1.0 / math.sqrt(inputs), seed=self.seed), name='weight')
+            param['weight'] = weight
             bais = tf.Variable(tf.zeros([outputs]), name='bais')
-            list.append(self, (weight, bais))
+            param['bais'] = bais
+            list.append(self, param)
     
     def get_size(self, i):
-        return list.__getitem__(self, i)[1].get_shape()[0].value
+        return list.__getitem__(self, i)['bais'].get_shape()[0].value
 
 
 class ModelConv(list):
     def __init__(self, image, param, layers, training=False, seed=None):
-        for i, ((weight, bais), (stride1, stride2, pooling1, pooling2, act, norm)) in enumerate(zip(param, layers[['stride1', 'stride2', 'pooling1', 'pooling2', 'act', 'norm']].values)):
-            with tf.name_scope('conv%d' % i):
+        for i, (param, (stride1, stride2, pooling1, pooling2, act, norm)) in enumerate(zip(param, layers[['stride1', 'stride2', 'pooling1', 'pooling2', 'act', 'norm']].values)):
+            scope = 'conv%d' % i
+            with tf.name_scope(scope):
                 layer = {'image': image}
-                image = tf.nn.conv2d(image, weight, strides=[1, stride1, stride2, 1], padding='SAME')
+                image = tf.nn.conv2d(image, param['weight'], strides=[1, stride1, stride2, 1], padding='SAME')
                 layer['conv'] = image
-                image = tf.nn.bias_add(image, bais)
-                layer['add'] = image
                 if norm == 'bn':
-                    image = tf.layers.batch_normalization(image, training=training)
+                    image = tf.nn.batch_normalization(image, *tf.nn.moments(image, [0]), param['bais'], param['scale'], 1e-3)
                     layer['norm'] = image
-                elif norm == 'lrn':
-                    image = tf.nn.lrn(image, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
-                    layer['norm'] = image
+                else:
+                    image = tf.nn.bias_add(image, param['bais'])
+                    layer['add'] = image
                 if act == 'relu':
                     image = tf.nn.relu(image)
                     layer['act'] = image
@@ -90,12 +107,12 @@ class ModelConv(list):
                 list.append(self, layer)
         self.output = image
     
-    def __call__(self, weight, bais, strides=[1, 1, 1, 1], padding='SAME'):
+    def __call__(self, param, strides=[1, 1, 1, 1], padding='SAME'):
         with tf.name_scope('conv'):
             layer = {}
-            image = tf.nn.conv2d(self.output, weight, strides=strides, padding=padding)
+            image = tf.nn.conv2d(self.output, param['weight'], strides=strides, padding=padding)
             layer['conv'] = image
-            image = tf.nn.bias_add(image, bais)
+            image = tf.nn.bias_add(image, param['bais'])
             layer['add'] = image
             layer['output'] = image
             list.append(self, layer)
@@ -104,19 +121,18 @@ class ModelConv(list):
 
 class ModelFC(list):
     def __init__(self, data, param, layers, training=False, seed=None):
-        for i, ((weight, bais), (act, norm, dropout)) in enumerate(zip(param, layers[['act', 'norm', 'dropout']].values)):
-            with tf.name_scope('fc%d' % i):
+        for i, (param, (act, norm, dropout)) in enumerate(zip(param, layers[['act', 'norm', 'dropout']].values)):
+            scope = 'fc%d' % i
+            with tf.name_scope(scope):
                 layer = {'data': data}
-                data = tf.matmul(data, weight)
+                data = tf.matmul(data, param['weight'])
                 layer['matmul'] = data
-                data = data + bais
-                layer['add'] = data
                 if norm == 'bn':
-                    data = tf.layers.batch_normalization(data, training=training)
+                    data = tf.nn.batch_normalization(data, *tf.nn.moments(data, [0]), param['bais'], param['scale'], 1e-3)
                     layer['norm'] = data
-                elif norm == 'lrn':
-                    data = tf.nn.lrn(data, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
-                    layer['norm'] = data
+                else:
+                    data = data + param['bais']
+                    layer['add'] = data
                 if act == 'relu':
                     data = tf.nn.relu(data)
                     layer['act'] = data
@@ -134,12 +150,12 @@ class ModelFC(list):
         self.training = training
         self.seed = seed
     
-    def __call__(self, weight, bais):
+    def __call__(self, param):
         with tf.name_scope('fc'):
             layer = {}
-            data = tf.matmul(self.output, weight)
+            data = tf.matmul(self.output, param['weight'])
             layer['matmul'] = data
-            data = data + bais
+            data = data + param['bais']
             layer['add'] = data
             layer['output'] = data
             list.append(self, layer)
