@@ -88,7 +88,12 @@ class ModelConv(list):
                 image = tf.nn.conv2d(image, param['weight'], strides=[1, stride1, stride2, 1], padding='SAME')
                 layer['conv'] = image
                 if norm == 'bn':
-                    image = tf.nn.batch_normalization(image, *tf.nn.moments(image, [0]), param['bais'], param['scale'], 1e-3)
+                    epsilon = 1e-3
+                    if training:
+                        image = tf.nn.batch_normalization(image, *tf.nn.moments(image, [0]), param['bais'], param['scale'], epsilon)
+                    else:
+                        size = param['bais'].get_shape()[-1].value
+                        image = tf.nn.batch_normalization(image, tf.zeros([size]), tf.ones([size]), param['bais'], param['scale'], epsilon)
                     layer['norm'] = image
                 else:
                     image = tf.nn.bias_add(image, param['bais'])
@@ -128,7 +133,12 @@ class ModelFC(list):
                 data = tf.matmul(data, param['weight'])
                 layer['matmul'] = data
                 if norm == 'bn':
-                    data = tf.nn.batch_normalization(data, *tf.nn.moments(data, [0]), param['bais'], param['scale'], 1e-3)
+                    epsilon = 1e-3
+                    if training:
+                        data = tf.nn.batch_normalization(data, *tf.nn.moments(data, [0]), param['bais'], param['scale'], epsilon)
+                    else:
+                        size = param['bais'].get_shape()[-1].value
+                        data = tf.nn.batch_normalization(data, tf.zeros([size]), tf.ones([size]), param['bais'], param['scale'], epsilon)
                     layer['norm'] = data
                 else:
                     data = data + param['bais']
