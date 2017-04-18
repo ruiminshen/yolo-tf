@@ -20,10 +20,10 @@ import argparse
 import configparser
 import importlib
 import numpy as np
+import scipy.misc
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
-from tensorflow.python.framework import ops
 import utils
 
 
@@ -59,32 +59,30 @@ def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
+    yolodir = os.path.expanduser(os.path.expandvars(config.get(section, 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     with tf.Session() as sess:
-        with tf.name_scope('data'):
-            image = tf.image.decode_jpeg(tf.read_file(ops.convert_to_tensor(args.image)), channels=3)
-            image = tf.image.resize_images(image, [height, width])
-            image = tf.image.per_image_standardization(image)
-            image = tf.expand_dims(image, 0)
+        image_rgb = scipy.misc.imresize(scipy.misc.imread(args.image), [height, width])
+        image_std = utils.per_image_standardization(image_rgb)
+        image_std = np.expand_dims(image_std, 0)
         modeler = yolo.Modeler(args, config)
         modeler.param()
+        image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
         modeler.eval(image)
+        with tf.name_scope('optimizer'):
+            step = tf.Variable(0, name='step')
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
         saver.restore(sess, path_model)
-        image = sess.run(image[0])
-        vmin = np.min(image)
-        vmax = np.max(image)
-        image = ((image - vmin) * 255 / (vmax - vmin)).astype(np.uint8)
+        logger.info('step=%d' % sess.run(step))
         fig = plt.figure()
         ax = fig.gca()
-        ax.imshow(image)
-        prob, xy_min, xy_max = sess.run([modeler.model_eval.conf * tf.to_float(modeler.model_eval.conf > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max])
+        ax.imshow(image_rgb)
+        prob, xy_min, xy_max = sess.run([modeler.model_eval.conf * tf.to_float(modeler.model_eval.conf > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max], feed_dict={image: image_std})
         boxes = non_max_suppress(prob[0], xy_min[0], xy_max[0])
         for _prob, _xy_min, _xy_max in boxes:
             index = np.argmax(_prob)

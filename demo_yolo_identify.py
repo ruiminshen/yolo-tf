@@ -21,12 +21,10 @@ import configparser
 import importlib
 import pickle
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 from tensorflow.python.framework import ops
-import model
 import utils
 
 
@@ -102,7 +100,7 @@ def draw_label(ax, names, cell_width, cell_height, image_width, image_height, in
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
+    yolodir = os.path.expanduser(os.path.expandvars(config.get(section, 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:

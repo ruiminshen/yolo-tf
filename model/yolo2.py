@@ -60,10 +60,10 @@ def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_he
 
 
 class Model(object):
-    def __init__(self, image, param_conv, layers_conv, classes, anchors, training=False, seed=None):
+    def __init__(self, image, param, layers_conv, classes, anchors, training=False, seed=None):
         self.image = image
-        self.conv = model.ModelConv(self.image, param_conv, layers_conv, training, seed)
-        self.conv(param_conv[-1])
+        self.conv = model.ModelConv(self.image, param, layers_conv, training, seed)
+        self.conv(param[-1])
         boxes_per_cell, _ = anchors.shape
         _, cell_height, cell_width, _ = self.conv.output.get_shape().as_list()
         cells = cell_height * cell_width
@@ -92,8 +92,8 @@ class Model(object):
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
         self.conf = tf.identity(self.prob * tf.expand_dims(self.iou, -1), name='conf')
-        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(p['weight']) for p in param_conv], name='regularizer')
-        self.param_conv = param_conv
+        self.regularizer = tf.reduce_sum([tf.nn.l2_loss(p['weight']) for p in param], name='regularizer')
+        self.param = param
         self.classes = classes
         self.anchors = anchors
     
@@ -150,15 +150,15 @@ class Modeler(object):
     
     def param(self, scope='param'):
         with tf.variable_scope(scope):
-            self.param_conv = model.ParamConv(3, self.layers_conv, seed=self.args.seed)
+            self.param = model.ParamConv(3, self.layers_conv, seed=self.args.seed)
             boxes_per_cell = self.anchors.shape[0]
             outputs = boxes_per_cell * (5 + len(self.names))
-            self.param_conv(outputs)
+            self.param(outputs)
     
     def train(self, image, labels, scope='train'):
         section = __name__.split('.')[-1]
         with tf.name_scope(scope):
-            self.model_train = Model(image, self.param_conv, self.layers_conv, len(self.names), self.anchors, training=True, seed=self.args.seed)
+            self.model_train = Model(image, self.param, self.layers_conv, len(self.names), self.anchors, training=True, seed=self.args.seed)
             with tf.name_scope('loss'):
                 self.loss_train = Loss(self.model_train, *labels)
                 with tf.variable_scope('hparam'):
@@ -172,12 +172,13 @@ class Modeler(object):
     
     def setup_histogram(self):
         if self.config.getboolean('histogram', 'param'):
-            if self.config.getboolean('histogram_param_conv', 'weight'):
-                for weight, _ in self.param_conv:
-                    tf.summary.histogram(weight.name, weight)
-            if self.config.getboolean('histogram_param_conv', 'bais'):
-                for _, bais in self.param_conv:
-                    tf.summary.histogram(bais.name, bais)
+            for param in self.param:
+                for key, value in param.items():
+                    try:
+                        if self.config.getboolean('histogram_param_conv', key):
+                            tf.summary.histogram(value.name, value)
+                    except configparser.NoOptionError:
+                        pass
         if self.config.getboolean('histogram', 'model'):
             for layer in self.model_train.conv:
                 for key, value in layer.items():
@@ -194,4 +195,4 @@ class Modeler(object):
     
     def eval(self, image, scope='eval'):
         with tf.name_scope(scope):
-            self.model_eval = Model(image, self.param_conv, self.layers_conv, len(self.names), self.anchors)
+            self.model_eval = Model(image, self.param, self.layers_conv, len(self.names), self.anchors)

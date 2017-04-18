@@ -175,18 +175,20 @@ class Modeler(object):
     
     def setup_histogram(self):
         if self.config.getboolean('histogram', 'param'):
-            if self.config.getboolean('histogram_param_conv', 'weight'):
-                for weight, _ in self.param_conv:
-                    tf.summary.histogram(weight.name, weight)
-            if self.config.getboolean('histogram_param_conv', 'bais'):
-                for _, bais in self.param_conv:
-                    tf.summary.histogram(bais.name, bais)
-            if self.config.getboolean('histogram_param_fc', 'weight'):
-                for weight, _ in self.param_fc:
-                    tf.summary.histogram(weight.name, weight)
-            if self.config.getboolean('histogram_param_fc', 'bais'):
-                for _, bais in self.param_fc:
-                    tf.summary.histogram(bais.name, bais)
+            for param in self.param_conv:
+                for key, value in param.items():
+                    try:
+                        if self.config.getboolean('histogram_param_conv', key):
+                            tf.summary.histogram(value.name, value)
+                    except configparser.NoOptionError:
+                        pass
+            for param in self.param_fc:
+                for key, value in param.items():
+                    try:
+                        if self.config.getboolean('histogram_param_fc', key):
+                            tf.summary.histogram(value.name, value)
+                    except configparser.NoOptionError:
+                        pass
         if self.config.getboolean('histogram', 'model'):
             for layer in self.model_train.conv:
                 for key, value in layer.items():

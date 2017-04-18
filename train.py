@@ -46,7 +46,7 @@ def output(sess, step, summary, summary_writer, saver, path_model):
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    yolodir = os.path.expanduser(os.path.expandvars(config.get('yolo', 'dir')))
+    yolodir = os.path.expanduser(os.path.expandvars(config.get(section, 'dir')))
     modeldir = os.path.join(yolodir, 'model')
     path_model = os.path.join(modeldir, 'model.ckpt')
     if args.reset and os.path.exists(modeldir):
@@ -114,15 +114,14 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-e', '--evaluation', type=int, default=0)
-    parser.add_argument('-r', '--reset', action='store_true', help='reset saved model')
-    parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
-    parser.add_argument('-t', '--test', action='store_true')
-    parser.add_argument('-b', '--batch_size', default=16, type=int)
-    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float)
+    parser.add_argument('-e', '--evaluation', type=int, default=0, help='maximum number of evaluation')
+    parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
+    parser.add_argument('-d', '--delete', action='store_true', help='delete logdir for TensorBoard')
+    parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
+    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--seed', type=int)
-    parser.add_argument('--output_cycle', default=10, type=int)
-    parser.add_argument('--save_cycle', default=500, type=int)
+    parser.add_argument('--output_cycle', default=10, type=int, help='output frequency')
+    parser.add_argument('--save_cycle', default=500, type=int, help='save frequency')
     return parser.parse_args()
 
 if __name__ == '__main__':

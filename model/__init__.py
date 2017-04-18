@@ -22,16 +22,13 @@ import tensorflow as tf
 class ParamConv(list):
     def __init__(self, channels, layers, seed=None):
         self.channels = channels
-        for i, (size, kernel1, kernel2, norm) in enumerate(layers[['size', 'kernel1', 'kernel2', 'norm']].values):
+        for i, (size, kernel1, kernel2) in enumerate(layers[['size', 'kernel1', 'kernel2']].values):
             with tf.variable_scope('conv%d' % i):
                 param = {}
                 weight = tf.Variable(tf.truncated_normal([kernel1, kernel2, channels, size], stddev=1.0 / math.sqrt(channels * kernel1 * kernel2), seed=seed), name='weight')
                 param['weight'] = weight
                 bais = tf.Variable(tf.zeros([size]), name='bais')
                 param['bais'] = bais
-                if norm == 'bn':
-                    scale = tf.Variable(tf.ones([size]), name='scale')
-                    param['scale'] = scale
                 list.append(self, param)
                 channels = size
     
@@ -51,16 +48,13 @@ class ParamConv(list):
 
 class ParamFC(list):
     def __init__(self, inputs, layers, seed=None):
-        for i, (size, norm) in enumerate(layers[['size', 'norm']].values):
+        for i, size in enumerate(layers['size'].values):
             with tf.variable_scope('fc%d' % i):
                 param = {}
                 weight = tf.Variable(tf.truncated_normal([inputs, size], stddev=1.0 / math.sqrt(inputs), seed=seed), name='weight')
                 param['weight'] = weight
                 bais = tf.Variable(tf.zeros([size]), name='bais')
                 param['bais'] = bais
-                if norm == 'bn':
-                    scale = tf.Variable(tf.ones([size]), name='scale')
-                    param['scale'] = scale
                 list.append(self, param)
                 inputs = size
         self.seed = seed
@@ -87,13 +81,8 @@ class ModelConv(list):
                 layer = {'image': image}
                 image = tf.nn.conv2d(image, param['weight'], strides=[1, stride1, stride2, 1], padding='SAME')
                 layer['conv'] = image
-                if norm == 'bn':
-                    epsilon = 1e-3
-                    if training:
-                        image = tf.nn.batch_normalization(image, *tf.nn.moments(image, [0]), param['bais'], param['scale'], epsilon)
-                    else:
-                        size = param['bais'].get_shape()[-1].value
-                        image = tf.nn.batch_normalization(image, tf.zeros([size]), tf.ones([size]), param['bais'], param['scale'], epsilon)
+                if norm == 'batch_norm':
+                    image = tf.contrib.layers.batch_norm(image, scale=True, is_training=training, updates_collections=None, scope='batch_norm/' + scope)
                     layer['norm'] = image
                 else:
                     image = tf.nn.bias_add(image, param['bais'])
@@ -132,13 +121,8 @@ class ModelFC(list):
                 layer = {'data': data}
                 data = tf.matmul(data, param['weight'])
                 layer['matmul'] = data
-                if norm == 'bn':
-                    epsilon = 1e-3
-                    if training:
-                        data = tf.nn.batch_normalization(data, *tf.nn.moments(data, [0]), param['bais'], param['scale'], epsilon)
-                    else:
-                        size = param['bais'].get_shape()[-1].value
-                        data = tf.nn.batch_normalization(data, tf.zeros([size]), tf.ones([size]), param['bais'], param['scale'], epsilon)
+                if norm == 'batch_norm':
+                    data = tf.contrib.layers.batch_norm(data, scale=True, is_training=training, updates_collections=None, scope='batch_norm/' + scope)
                     layer['norm'] = data
                 else:
                     data = data + param['bais']

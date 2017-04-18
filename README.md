@@ -1,28 +1,22 @@
-# TensorFlow implementation of the [YOLO (You Only Look Once)](https://arxiv.org/pdf/1506.02640.pdf)
+# TensorFlow implementation of the [YOLO (You Only Look Once)](https://arxiv.org/pdf/1506.02640.pdf) and [YOLOv2](https://arxiv.org/pdf/1612.08242.pdf)
 
 ## Dependencies
 
 Python 3, TensorFlow 1.0, NumPy, Pandas, SymPy, Matplotlib, beautifulsoup4
 
-## Basic Usage
-
-- Download PASCAL VOC2007 data ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)).
-
-- Extract these tars into one directory (such as "~/Documents/Database/").
-
-- Run "cache.py" (the PASCAL VOC2007 data directory (such as "~/Documents/Database/VOCdevkit/VOC2007") should be given) to create VOC label cache (path is defined in "yolo/cache" of config.ini) for the YOLO training program.
-
-- Run "train.py" to load the model saved previously (if exists) and start the training process. A base directory (defined in "yolo/dir" of config.ini) identifies the logdir (for TensorBoard) and the model. The model will be saved periodically during the training process, and you can define the maximum evaluate number (-e option in command line) or press Ctrl+C to terminate the training program.
-
-- Run "identify.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
-
 ## Configuration
 
-The main configuration file is config.ini, which defines parameters such as object classes file (yolo/names), resized image size, model definition file (both convolutional layers and fully connected layers), hyper-parameters (parameter for regularizer and 4 parameters in section "yolo_hparam" for YOLO optimization objectives), and queue parameters (section "queue") to maximize GPU usage.
+Configurations are mainly defined in the "config.ini" file. For example, the model name is defined in option "model" in section "config", and the parameters defined in section "queue" is used to maximize GPU usage. The object classes file, the input data cache path, the model base directory (which identifies the parameter "logdir" for TensorBoard and the model data files), the model structure (convolutional layers or fully connected layers) definition files (.tsv) and hyper-parameters are defined in the sections correspoding to the model name.
 
-## Known Issue
+## Basic Usage
 
-Batch normalization still under development.
+- Download PASCAL VOC2007 data ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)). Extract these tars into one directory (such as "~/Documents/Database/").
+
+- Run "cache.py" (the PASCAL VOC2007 data directory (such as "~/Documents/Database/VOCdevkit/VOC2007") should be given) to create the cache file for the training program.
+
+- Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the model data saving frequency and the maximum number of evaluation. To manually terminate the training program, press Ctrl+C key and the model data will be saved.
+
+- Run "identify.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
 
 ## License
 

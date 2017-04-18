@@ -19,6 +19,7 @@ import sys
 import math
 import logging
 import getpass
+import numpy as np
 import sympy
 
 
@@ -36,6 +37,11 @@ def make_logger(level, fmt):
         handler.setFormatter(formatter)
         logger.addHandler(handler)
     return logger
+
+
+def per_image_standardization(image):
+    stddev = np.std(image)
+    return (image - np.mean(image)) / max(stddev, 1.0 / np.sqrt(np.multiply.reduce(image.shape)))
 
 
 def get_factor2(x):
