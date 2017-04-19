@@ -16,46 +16,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
-import math
 import configparser
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import model
+import model.yolo
 import utils
 
 
 def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes):
-    cells = cell_height * cell_width
-    mask = np.zeros([len(labels), cells, 1])
-    prob = np.zeros([len(labels), cells, 1, classes])
-    coords = np.zeros([len(labels), cells, 1, 4])
-    offset_xy_min = np.zeros([len(labels), cells, 1, 2])
-    offset_xy_max = np.zeros([len(labels), cells, 1, 2])
-    for i, ((image_height, image_width, _), objects) in enumerate(zip(imageshapes, labels)):
-        for xmin, ymin, xmax, ymax, c in objects:
-            x = (xmin + xmax) / 2
-            y = (ymin + ymax) / 2
-            cell_x = x * cell_width / image_width
-            cell_y = y * cell_height / image_height
-            assert 0 <= cell_x < cell_width
-            assert 0 <= cell_y < cell_height
-            ix = math.floor(cell_x)
-            iy = math.floor(cell_y)
-            index = iy * cell_width + ix
-            offset_x = cell_x - ix
-            offset_y = cell_y - iy
-            _w = float(xmax - xmin) / image_width
-            _h = float(ymax - ymin) / image_height
-            mask[i, index, :] = 1
-            prob[i, index, 0, :] = [0] * classes
-            prob[i, index, 0, c] = 1
-            coords[i, index, 0, :] = [offset_x, offset_y, math.sqrt(_w), math.sqrt(_h)]
-            offset_xy_min[i, index, 0, :] = [offset_x - _w / 2 * cell_width, offset_y - _h / 2 * cell_height]
-            offset_xy_max[i, index, 0, :] = [offset_x + _w / 2 * cell_width, offset_y + _h / 2 * cell_height]
-    wh = offset_xy_max - offset_xy_min
-    assert np.all(wh >= 0)
-    areas = np.multiply.reduce(wh, -1)
+    mask, prob, coords, offset_xy_min, offset_xy_max, areas = model.yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes)
+    prob = np.expand_dims(prob, 2)
     return mask, prob, coords, offset_xy_min, offset_xy_max, areas
 
 

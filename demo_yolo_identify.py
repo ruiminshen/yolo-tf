@@ -100,9 +100,9 @@ def draw_label(ax, names, cell_width, cell_height, image_width, image_height, in
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    yolodir = os.path.expanduser(os.path.expandvars(config.get(section, 'dir')))
-    modeldir = os.path.join(yolodir, 'model')
-    path_model = os.path.join(modeldir, 'model.ckpt')
+    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
+    modeldir = os.path.join(basedir, 'model')
+    modelpath = os.path.join(modeldir, 'model.ckpt')
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
@@ -131,7 +131,7 @@ def main():
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
-        saver.restore(sess, path_model)
+        saver.restore(sess, modelpath)
         _ = Drawer(sess, names, modeler.cell_width, modeler.cell_height, sess.run(image[0]), sess.run([l[0] for l in labels]), modeler.model_eval, loss)
         plt.show()
 

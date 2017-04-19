@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-Python 3, TensorFlow 1.0, NumPy, Pandas, SymPy, Matplotlib, beautifulsoup4
+Python 3, TensorFlow 1.0, TensorLayer, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4
 
 ## Configuration
 

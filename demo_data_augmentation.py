@@ -20,9 +20,9 @@ import argparse
 import configparser
 import importlib
 import pickle
-import shutil
-import time
 import multiprocessing
+import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.framework import ops
 import utils
@@ -31,16 +31,6 @@ import utils
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    modeldir = os.path.join(basedir, 'model')
-    modelpath = os.path.join(modeldir, 'model.ckpt')
-    if args.reset and os.path.exists(modeldir):
-        logger.warn('delete modeldir: ' + modeldir)
-        shutil.rmtree(modeldir, ignore_errors=True)
-    logdir = os.path.join(basedir, 'logdir')
-    if args.delete:
-        logger.warn('delete logdir: ' + logdir)
-        shutil.rmtree(logdir, ignore_errors=True)
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
@@ -60,63 +50,30 @@ def main():
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
                 image, labels = utils.data_augmentation(image, labels, config)
                 data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
-        modeler = yolo.Modeler(args, config)
-        modeler.param()
-        modeler.train(data[0], data[1:])
-        modeler.setup_histogram()
-        with tf.name_scope('optimizer'):
-            global_step = tf.Variable(0, name='global_step')
-            logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(modeler.loss, global_step=global_step)
-        summary = tf.summary.merge_all()
-        summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname), sess.graph)
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
-        logger.info('load model')
-        saver = tf.train.Saver()
-        if os.path.exists(modeldir):
-            try:
-                saver.restore(sess, modelpath)
-            except:
-                logger.warn('error occurs while loading model: ' + modelpath)
-        os.makedirs(modeldir, exist_ok=True)
-        cmd = 'tensorboard --logdir ' + logdir
-        logger.info('run: ' + cmd)
-        try:
-            step = sess.run(global_step)
-            while args.evaluation <= 0 or step * args.batch_size < args.evaluation:
-                _, step = sess.run([optimizer, global_step])
-                if step % args.output_freq == 0:
-                    evaluation = step * args.batch_size
-                    logger.info('evaluation=%d/%d' % (evaluation, args.evaluation))
-                    summary_writer.add_summary(sess.run(summary), evaluation)
-                if step % args.save_freq == 0:
-                    saver.save(sess, modelpath)
-                    logger.info('model saved into: ' + modelpath)
-        except KeyboardInterrupt:
-            logger.warn('keyboard interrupt captured')
+        images, labels = sess.run([data[0], data[1:]])
         coord.request_stop()
         coord.join(threads)
-        saver.save(sess, modelpath)
-        logger.info('model saved into: ' + modelpath)
-        modeler.log_hparam(sess, logger)
-    #os.system(cmd)
+    vmin = np.min(images, (1, 2, 3)).reshape([args.batch_size, 1, 1, 1])
+    vmax = np.max(images, (1, 2, 3)).reshape([args.batch_size, 1, 1, 1])
+    _images = ((images - vmin) * 255 / (vmax - vmin)).astype(np.uint8)
+    row, col = utils.get_factor2(args.batch_size)
+    fig, axes = plt.subplots(row, col)
+    for ax, _image in zip(axes.flat, _images):
+        ax.imshow(_image)
+        ax.set_xticks([])
+        ax.set_yticks([])
+    fig.tight_layout()
+    plt.show()
 
 
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-e', '--evaluation', type=int, default=0, help='maximum number of evaluation')
-    parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
-    parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
-    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
-    parser.add_argument('--seed', type=int)
-    parser.add_argument('--output_freq', default=10, type=int, help='output frequency')
-    parser.add_argument('--save_freq', default=500, type=int, help='save frequency')
-    parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
     return parser.parse_args()
 
 if __name__ == '__main__':

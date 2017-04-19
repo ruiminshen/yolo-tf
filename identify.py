@@ -59,9 +59,9 @@ def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module('model.' + section)
-    yolodir = os.path.expanduser(os.path.expandvars(config.get(section, 'dir')))
-    modeldir = os.path.join(yolodir, 'model')
-    path_model = os.path.join(modeldir, 'model.ckpt')
+    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
+    modeldir = os.path.join(basedir, 'model')
+    modelpath = os.path.join(modeldir, 'model.ckpt')
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     with tf.Session() as sess:
@@ -73,12 +73,12 @@ def main():
         image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
         modeler.eval(image)
         with tf.name_scope('optimizer'):
-            step = tf.Variable(0, name='step')
+            global_step = tf.Variable(0, name='global_step')
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
-        saver.restore(sess, path_model)
-        logger.info('step=%d' % sess.run(step))
+        saver.restore(sess, modelpath)
+        logger.info('step=%d' % sess.run(global_step))
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image_rgb)

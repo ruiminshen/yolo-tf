@@ -20,6 +20,7 @@ import math
 import logging
 import getpass
 import numpy as np
+import tensorflow as tf
 import sympy
 
 
@@ -37,6 +38,22 @@ def make_logger(level, fmt):
         handler.setFormatter(formatter)
         logger.addHandler(handler)
     return logger
+
+
+def data_augmentation(image, labels, config):
+    if config.getboolean('data_augmentation', 'random_brightness'):
+        image = tf.image.random_brightness(image, max_delta=63)
+    if config.getboolean('data_augmentation', 'random_saturation'):
+        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+    if config.getboolean('data_augmentation', 'random_hue'):
+        image = tf.image.random_hue(image, max_delta=0.032)
+    if config.getboolean('data_augmentation', 'random_contrast'):
+        image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
+    image = tf.clip_by_value(image, 0, 255)
+    image = tf.image.per_image_standardization(image)
+    if config.getboolean('data_augmentation', 'noise'):
+        image += tf.random_normal(image.get_shape(), stddev=.2)
+    return image, labels
 
 
 def per_image_standardization(image):
