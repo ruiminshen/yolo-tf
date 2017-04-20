@@ -17,7 +17,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import math
 import tensorflow as tf
-import tensorlayer as tl
 
 
 class ParamConv(list):
@@ -92,7 +91,8 @@ class ModelConv(list):
                     image = tf.nn.relu(image)
                     layer['act'] = image
                 elif act == 'lrelu':
-                    image = tl.activation.leaky_relu(image)
+                    with tf.name_scope('LeakyReLU'):
+                        image = tf.maximum(image, 0.1 * image)
                     layer['act'] = image
                 if pooling1 > 0 and pooling2 > 0:
                     image = tf.nn.max_pool(image, ksize=[1, pooling1, pooling2, 1], strides=[1, pooling1, pooling2, 1], padding='SAME')
@@ -131,7 +131,8 @@ class ModelFC(list):
                     data = tf.nn.relu(data)
                     layer['act'] = data
                 elif act == 'lrelu':
-                    data = tl.activation.leaky_relu(data)
+                    with tf.name_scope('LeakyReLU'):
+                        data = tf.maximum(data, 0.1 * data)
                     layer['act'] = data
                 if 0 < dropout < 1 and training:
                     data = tf.nn.dropout(data, dropout, seed=seed)

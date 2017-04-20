@@ -85,12 +85,11 @@ def main():
         logger.info('run: ' + cmd)
         try:
             step = sess.run(global_step)
-            while args.evaluation <= 0 or step * args.batch_size < args.evaluation:
+            while args.terminate <= 0 or step < args.terminate:
                 _, step = sess.run([optimizer, global_step])
                 if step % args.output_freq == 0:
-                    evaluation = step * args.batch_size
-                    logger.info('evaluation=%d/%d' % (evaluation, args.evaluation))
-                    summary_writer.add_summary(sess.run(summary), evaluation)
+                    logger.info('step=%d/%d' % (step, args.terminate))
+                    summary_writer.add_summary(sess.run(summary), step)
                 if step % args.save_freq == 0:
                     saver.save(sess, modelpath)
                     logger.info('model saved into: ' + modelpath)
@@ -108,7 +107,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-e', '--evaluation', type=int, default=0, help='maximum number of evaluation')
+    parser.add_argument('-t', '--terminate', type=int, default=0, help='terminate steps')
     parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
