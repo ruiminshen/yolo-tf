@@ -1,3 +1,0 @@
-size	act	norm	dropout
-256	lrelu	none	0.5
-4096	lrelu	none	0.5

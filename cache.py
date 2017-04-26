@@ -20,14 +20,13 @@ import argparse
 import configparser
 import importlib
 import pickle
-import pandas as pd
+import tensorflow as tf
 import voc
-import utils
 
 
 def main():
     section = config.get('config', 'model')
-    yolo = importlib.import_module('model.' + section)
+    yolo = importlib.import_module(section)
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
     path = os.path.expanduser(os.path.expandvars(args.path))
@@ -35,9 +34,12 @@ def main():
     imagenames, imageshapes, labels = voc.load_dataset(path, names)
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
-    layers_conv = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'conv'))), sep='\t')
-    cell_width = utils.calc_pooled_size(width, layers_conv['pooling1'].values)
-    cell_height = utils.calc_pooled_size(height, layers_conv['pooling2'].values)
+    inference = getattr(getattr(yolo, 'inference'), config.get(section, 'inference'))
+    _scope, net = inference(tf.zeros([1, height, width, 3]), len(names), 1)
+    try:
+        _, cell_height, cell_width, _ = net.get_shape().as_list()
+    except ValueError:
+        _, cell_height, cell_width, _ = tf.get_default_graph().get_tensor_by_name("%s/conv:0" % _scope).get_shape().as_list()
     print('size=%d, (width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (len(imagenames), width, height, cell_width, cell_height))
     labels = yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, len(names))
     imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]

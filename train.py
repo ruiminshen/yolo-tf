@@ -22,6 +22,7 @@ import importlib
 import pickle
 import shutil
 import time
+import math
 import multiprocessing
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -30,7 +31,7 @@ import utils
 
 def main():
     section = config.get('config', 'model')
-    yolo = importlib.import_module('model.' + section)
+    yolo = importlib.import_module(section)
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
     modeldir = os.path.join(basedir, 'model')
     modelpath = os.path.join(modeldir, 'model.ckpt')
@@ -44,30 +45,32 @@ def main():
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
-        data = pickle.load(f)
-    logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
+        data_labels = pickle.load(f)
+    logger.info('size: %d (batch size: %d)' % (len(data_labels[0]), args.batch_size))
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     with tf.Session() as sess:
-        with tf.name_scope('data'):
+        with tf.name_scope('data_labels'):
             with tf.device('/cpu:0'):
-                imagepaths = tf.train.string_input_producer(data[0], shuffle=False)
+                paths = tf.train.string_input_producer(data_labels[0], shuffle=False)
                 reader = tf.WholeFileReader()
-                _, image = reader.read(imagepaths)
-                image = tf.image.decode_jpeg(image, channels=3)
-                image = tf.image.resize_images(image, [height, width])
-                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
+                _, data = reader.read(paths)
+                data = tf.image.decode_jpeg(data, channels=3)
+                data = tf.image.resize_images(data, [height, width])
+                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data_labels[1:]]
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
-                image, labels = utils.data_augmentation(image, labels, config)
-                data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
-        modeler = yolo.Modeler(args, config)
-        modeler.param()
-        modeler.train(data[0], data[1:])
-        modeler.setup_histogram()
+                if config.getboolean('data_augmentation', 'enable'):
+                    data, labels = utils.data_augmentation(data, labels, config)
+                data = tf.image.per_image_standardization(data)
+                data_labels = tf.train.shuffle_batch([data] + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
+            data = tf.identity(data_labels[0], name='data')
+        builder = yolo.Builder(args, config)
+        builder.train(data, data_labels[1:])
+        builder.tensorboard_histogram()
         with tf.name_scope('optimizer'):
             global_step = tf.Variable(0, name='global_step')
             logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(modeler.loss, global_step=global_step)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(builder.loss, global_step=global_step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname), sess.graph)
         tf.global_variables_initializer().run()
@@ -80,26 +83,29 @@ def main():
                 saver.restore(sess, modelpath)
             except:
                 logger.warn('error occurs while loading model: ' + modelpath)
-        os.makedirs(modeldir, exist_ok=True)
+        def save():
+            if math.isnan(sess.run(builder.loss)):
+                raise FloatingPointError('a NaN loss value captured')
+            os.makedirs(modeldir, exist_ok=True)
+            saver.save(sess, modelpath)
+            logger.info('model saved into: ' + modelpath)
         cmd = 'tensorboard --logdir ' + logdir
         logger.info('run: ' + cmd)
         try:
             step = sess.run(global_step)
-            while args.terminate <= 0 or step < args.terminate:
+            while args.steps <= 0 or step < args.steps:
                 _, step = sess.run([optimizer, global_step])
                 if step % args.output_freq == 0:
-                    logger.info('step=%d/%d' % (step, args.terminate))
+                    logger.info('step=%d/%d' % (step, args.steps))
                     summary_writer.add_summary(sess.run(summary), step)
                 if step % args.save_freq == 0:
-                    saver.save(sess, modelpath)
-                    logger.info('model saved into: ' + modelpath)
+                    save()
         except KeyboardInterrupt:
             logger.warn('keyboard interrupt captured')
         coord.request_stop()
         coord.join(threads)
-        saver.save(sess, modelpath)
-        logger.info('model saved into: ' + modelpath)
-        modeler.log_hparam(sess, logger)
+        save()
+        builder.log_hparam(sess, logger)
     #os.system(cmd)
 
 
@@ -107,7 +113,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-t', '--terminate', type=int, default=0, help='terminate steps')
+    parser.add_argument('-s', '--steps', type=int, default=0, help='max number of steps')
     parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')

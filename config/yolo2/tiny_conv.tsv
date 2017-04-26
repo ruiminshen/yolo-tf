@@ -1,9 +1,0 @@
-size	kernel1	kernel2	stride1	stride2	pooling1	pooling2	act	norm
-16	3	3	1	1	2	2	lrelu	batch_norm
-32	3	3	1	1	2	2	lrelu	batch_norm
-64	3	3	1	1	2	2	lrelu	batch_norm
-128	3	3	1	1	2	2	lrelu	batch_norm
-256	3	3	1	1	2	2	lrelu	batch_norm
-512	3	3	1	1	2	2	lrelu	batch_norm
-1024	3	3	1	1	0	0	lrelu	batch_norm
-1024	3	3	1	1	0	0	lrelu	batch_norm

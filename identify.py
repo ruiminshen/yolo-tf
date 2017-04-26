@@ -41,9 +41,9 @@ def iou(xy_min1, xy_max1, xy_min2, xy_max2):
     return _areas / np.maximum(areas1 + areas2 - _areas, 1e-10)
 
 
-def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
-    _, _, classes = prob.shape
-    boxes = [(_prob, _xy_min, _xy_max) for _prob, _xy_min, _xy_max in zip(prob.reshape(-1, classes), xy_min.reshape(-1, 2), xy_max.reshape(-1, 2))]
+def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
+    _, _, classes = conf.shape
+    boxes = [(_conf, _xy_min, _xy_max) for _conf, _xy_min, _xy_max in zip(conf.reshape(-1, classes), xy_min.reshape(-1, 2), xy_max.reshape(-1, 2))]
     for c in range(classes):
         boxes.sort(key=lambda box: box[0][c], reverse=True)
         for i in range(len(boxes) - 1):
@@ -58,20 +58,19 @@ def non_max_suppress(prob, xy_min, xy_max, threshold=.4):
 
 def main():
     section = config.get('config', 'model')
-    yolo = importlib.import_module('model.' + section)
+    yolo = importlib.import_module(section)
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
     modeldir = os.path.join(basedir, 'model')
     modelpath = os.path.join(modeldir, 'model.ckpt')
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
+    image_rgb = scipy.misc.imresize(scipy.misc.imread(args.image), [height, width])
+    image_std = utils.per_image_standardization(image_rgb)
+    image_std = np.expand_dims(image_std, 0)
     with tf.Session() as sess:
-        image_rgb = scipy.misc.imresize(scipy.misc.imread(args.image), [height, width])
-        image_std = utils.per_image_standardization(image_rgb)
-        image_std = np.expand_dims(image_std, 0)
-        modeler = yolo.Modeler(args, config)
-        modeler.param()
+        builder = yolo.Builder(args, config)
         image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
-        modeler.eval(image)
+        builder.eval(image)
         with tf.name_scope('optimizer'):
             global_step = tf.Variable(0, name='global_step')
         tf.global_variables_initializer().run()
@@ -82,16 +81,20 @@ def main():
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image_rgb)
-        prob, xy_min, xy_max = sess.run([modeler.model_eval.conf * tf.to_float(modeler.model_eval.conf > args.threshold), modeler.model_eval.xy_min, modeler.model_eval.xy_max], feed_dict={image: image_std})
-        boxes = non_max_suppress(prob[0], xy_min[0], xy_max[0])
-        for _prob, _xy_min, _xy_max in boxes:
-            index = np.argmax(_prob)
-            if _prob[index] > args.threshold:
+        conf, xy_min, xy_max = sess.run([builder.model_eval.conf * tf.to_float(builder.model_eval.conf > args.threshold), builder.model_eval.xy_min, builder.model_eval.xy_max], feed_dict={image: image_std})
+        boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+        cnt = 0
+        for _conf, _xy_min, _xy_max in boxes:
+            index = np.argmax(_conf)
+            if _conf[index] > args.threshold:
                 wh = _xy_max - _xy_min
-                _xy_min = _xy_min * [width, height] / [modeler.cell_width, modeler.cell_height]
-                _wh = wh * [width, height] / [modeler.cell_width, modeler.cell_height]
-                ax.add_patch(patches.Rectangle(_xy_min, _wh[0], _wh[1], linewidth=1, edgecolor='r', facecolor='none'))
-                ax.annotate(modeler.names[index], _xy_min, color='red')
+                _xy_min = _xy_min * [width, height] / [builder.model_eval.cell_width, builder.model_eval.cell_height]
+                _wh = wh * [width, height] / [builder.model_eval.cell_width, builder.model_eval.cell_height]
+                linewidth = min(_conf[index] * 10, 3)
+                ax.add_patch(patches.Rectangle(_xy_min, _wh[0], _wh[1], linewidth=linewidth, edgecolor=args.color, facecolor='none'))
+                ax.annotate(builder.names[index] + ' (%.1f%%)' % (_conf[index] * 100), _xy_min, color=args.color)
+                cnt += 1
+        fig.canvas.set_window_title('%d objects detected' % cnt)
         ax.set_xticks([])
         ax.set_yticks([])
         plt.show()
@@ -102,7 +105,9 @@ def make_args():
     parser.add_argument('image', help='input image')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-t', '--threshold', type=int, default=0.1, help='detection threshold')
+    parser.add_argument('-t', '--threshold', type=float, default=0.1, help='detection threshold')
+    parser.add_argument('-nt', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
+    parser.add_argument('--color', default='red', help='bounding box and font color')
     parser.add_argument('--seed', type=int)
     return parser.parse_args()
 

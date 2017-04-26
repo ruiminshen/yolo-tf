@@ -60,13 +60,19 @@ class Drawer(object):
         iy = int(event.ydata * self.cell_height / image_height)
         index = iy * self.cell_width + ix
         prob, iou, xy_min, wh = self.sess.run([self.model.prob[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]])
+        if len(prob.shape) == 1:
+            prob = np.tile(np.expand_dims(prob, 0), [len(iou), 1])
+        assert len(prob.shape) == 2
         xy_min = xy_min * [image_width, image_height] / [self.cell_width, self.cell_height]
         wh = wh * [image_width, image_height] / [self.cell_width, self.cell_height]
-        name = self.names[np.argmax(prob)]
-        self.fig.suptitle(name)
-        for color, conf, (x, y), (w, h) in zip(self.colors, iou, xy_min, wh):
-            self.plots.append(self.ax.add_patch(patches.Rectangle((x, y), w, h, linewidth=1, edgecolor=color, facecolor='none')))
-            self.plots.append(self.ax.annotate(str(conf), (x, y), color=color))
+        for _prob, _iou, (x, y), (w, h), color in zip(prob, iou, xy_min, wh, self.colors):
+            index = np.argmax(_prob)
+            name = self.names[index]
+            _prob = _prob[index]
+            _conf = _prob * _iou
+            linewidth = min(_conf * 10, 3)
+            self.plots.append(self.ax.add_patch(patches.Rectangle((x, y), w, h, linewidth=linewidth, edgecolor=color, facecolor='none')))
+            self.plots.append(self.ax.annotate(name + ' (%.1f%%, %.1f%%)' % (_iou * 100, _prob * 100), (x, y), color=color))
         self.fig.canvas.draw()
 
 
@@ -99,7 +105,7 @@ def draw_label(ax, names, cell_width, cell_height, image_width, image_height, in
 
 def main():
     section = config.get('config', 'model')
-    yolo = importlib.import_module('model.' + section)
+    yolo = importlib.import_module(section)
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
     modeldir = os.path.join(basedir, 'model')
     modelpath = os.path.join(modeldir, 'model.ckpt')
@@ -123,16 +129,15 @@ def main():
                 image = tf.image.per_image_standardization(image)
                 image = tf.expand_dims(image, 0)
                 labels = [tf.expand_dims(ops.convert_to_tensor(l[args.index], dtype=tf.float32), 0) for l in data[1:]]
-        modeler = yolo.Modeler(args, config)
-        modeler.param()
-        modeler.eval(image)
+        builder = yolo.Builder(args, config)
+        builder.eval(image)
         with tf.name_scope('loss'):
-            loss = yolo.Loss(modeler.model_eval, *labels)
+            loss = yolo.Loss(builder.model_eval, *labels)
         tf.global_variables_initializer().run()
         logger.info('load model')
         saver = tf.train.Saver()
         saver.restore(sess, modelpath)
-        _ = Drawer(sess, names, modeler.cell_width, modeler.cell_height, sess.run(image[0]), sess.run([l[0] for l in labels]), modeler.model_eval, loss)
+        _ = Drawer(sess, names, builder.model_eval.cell_width, builder.model_eval.cell_height, sess.run(image[0]), sess.run([l[0] for l in labels]), builder.model_eval, loss)
         plt.show()
 
 

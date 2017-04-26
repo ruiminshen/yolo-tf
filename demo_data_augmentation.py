@@ -30,38 +30,44 @@ import utils
 
 def main():
     section = config.get('config', 'model')
-    yolo = importlib.import_module('model.' + section)
     path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
     logger.info('loading cache from ' + path)
     with open(path, 'rb') as f:
-        data = pickle.load(f)
-    logger.info('size: %d (batch size: %d)' % (len(data[0]), args.batch_size))
+        data_labels = pickle.load(f)
+    logger.info('size: %d (batch size: %d)' % (len(data_labels[0]), args.batch_size))
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     with tf.Session() as sess:
-        with tf.name_scope('data'):
+        with tf.name_scope('data_labels'):
             with tf.device('/cpu:0'):
-                imagepaths = tf.train.string_input_producer(data[0], shuffle=False)
+                paths = tf.train.string_input_producer(data_labels[0], shuffle=False)
                 reader = tf.WholeFileReader()
-                _, image = reader.read(imagepaths)
-                image = tf.image.decode_jpeg(image, channels=3)
-                image = tf.image.resize_images(image, [height, width])
-                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data[1:]]
+                _, data = reader.read(paths)
+                data = tf.image.decode_jpeg(data, channels=3)
+                data = tf.image.resize_images(data, [height, width])
+                labels = [ops.convert_to_tensor(l, dtype=tf.float32) for l in data_labels[1:]]
                 labels = tf.train.slice_input_producer(labels, shuffle=False)
-                image, labels = utils.data_augmentation(image, labels, config)
-                data = tf.train.shuffle_batch([image] + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
+                if config.getboolean('data_augmentation', 'enable'):
+                    data, labels = utils.data_augmentation(data, labels, config)
+                #data = tf.image.per_image_standardization(data)
+                data_labels = tf.train.shuffle_batch([data] + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
+            data = tf.identity(data_labels[0], name='data')
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
-        images, labels = sess.run([data[0], data[1:]])
+        images, labels = sess.run([data, data_labels[1:]])
         coord.request_stop()
         coord.join(threads)
+    """
     vmin = np.min(images, (1, 2, 3)).reshape([args.batch_size, 1, 1, 1])
     vmax = np.max(images, (1, 2, 3)).reshape([args.batch_size, 1, 1, 1])
-    _images = ((images - vmin) * 255 / (vmax - vmin)).astype(np.uint8)
+    images = ((images - vmin) * 255 / (vmax - vmin)).astype(np.uint8)
+    """
+    print(np.min(images), np.max(images))
+    images = images.astype(np.uint8)
     row, col = utils.get_factor2(args.batch_size)
     fig, axes = plt.subplots(row, col)
-    for ax, _image in zip(axes.flat, _images):
+    for ax, _image in zip(axes.flat, images):
         ax.imshow(_image)
         ax.set_xticks([])
         ax.set_yticks([])

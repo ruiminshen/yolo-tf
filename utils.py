@@ -16,7 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
-import math
+import inspect
 import logging
 import getpass
 import numpy as np
@@ -41,18 +41,26 @@ def make_logger(level, fmt):
 
 
 def data_augmentation(image, labels, config):
-    if config.getboolean('data_augmentation', 'random_brightness'):
-        image = tf.image.random_brightness(image, max_delta=63)
-    if config.getboolean('data_augmentation', 'random_saturation'):
-        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-    if config.getboolean('data_augmentation', 'random_hue'):
-        image = tf.image.random_hue(image, max_delta=0.032)
-    if config.getboolean('data_augmentation', 'random_contrast'):
-        image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-    image = tf.clip_by_value(image, 0, 255)
-    image = tf.image.per_image_standardization(image)
-    if config.getboolean('data_augmentation', 'noise'):
-        image += tf.random_normal(image.get_shape(), stddev=.2)
+    section = inspect.stack()[0][3]
+    _image = image
+    with tf.name_scope(section):
+        if config.getboolean(section, 'random_brightness'):
+            _image = tf.image.random_brightness(_image, max_delta=63)
+        if config.getboolean(section, 'random_saturation'):
+            _image = tf.image.random_saturation(_image, lower=0.5, upper=1.5)
+        if config.getboolean(section, 'random_hue'):
+            _image = tf.image.random_hue(_image, max_delta=0.032)
+        if config.getboolean(section, 'random_contrast'):
+            _image = tf.image.random_contrast(_image, lower=0.5, upper=1.5)
+        if config.getboolean(section, 'noise'):
+            _image += tf.identity(tf.random_normal(_image.get_shape(), stddev=15) + 127, name='noise')
+        grayscale_probability = config.getfloat(section, 'grayscale_probability')
+        if grayscale_probability > 0:
+            with tf.name_scope('random_grayscale'):
+                image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
+        _image = tf.clip_by_value(_image, 0, 255)
+        with tf.name_scope('random_enable'):
+            image = tf.cond(tf.random_uniform([], 0, 1) < config.getfloat(section, 'enable_probability'), lambda: _image, lambda: image)
     return image, labels
 
 
@@ -69,10 +77,3 @@ def get_factor2(x):
     else:
         i = len(factors) // 2
         return factors[i], factors[i]
-
-
-def calc_pooled_size(size, pooling):
-    for ksize in pooling:
-        if ksize > 0:
-            size = math.ceil(float(size) / ksize)
-    return size
