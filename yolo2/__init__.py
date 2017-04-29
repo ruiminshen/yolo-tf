@@ -24,12 +24,6 @@ import yolo
 import yolo2.inference as inference
 
 
-def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes):
-    mask, prob, coords, offset_xy_min, offset_xy_max, areas = yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes)
-    prob = np.expand_dims(prob, 2)
-    return mask, prob, coords, offset_xy_min, offset_xy_max, areas
-
-
 class Model(object):
     def __init__(self, net, classes, anchors):
         _, self.cell_height, self.cell_width, _ = net.get_shape().as_list()
@@ -58,7 +52,7 @@ class Model(object):
             self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
-            self.conf = tf.identity(self.prob * tf.expand_dims(self.iou, -1), name='conf')
+            self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         self.classes = classes
         self.anchors = anchors
 

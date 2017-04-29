@@ -25,42 +25,8 @@ import tensorflow as tf
 import yolo.inference as inference
 
 
-def transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, classes):
-    cells = cell_height * cell_width
-    mask = np.zeros([len(labels), cells, 1])
-    prob = np.zeros([len(labels), cells, classes])
-    coords = np.zeros([len(labels), cells, 1, 4])
-    offset_xy_min = np.zeros([len(labels), cells, 1, 2])
-    offset_xy_max = np.zeros([len(labels), cells, 1, 2])
-    for i, ((image_height, image_width, _), objects) in enumerate(zip(imageshapes, labels)):
-        for xmin, ymin, xmax, ymax, c in objects:
-            x = (xmin + xmax) / 2
-            y = (ymin + ymax) / 2
-            cell_x = x * cell_width / image_width
-            cell_y = y * cell_height / image_height
-            assert 0 <= cell_x < cell_width
-            assert 0 <= cell_y < cell_height
-            ix = math.floor(cell_x)
-            iy = math.floor(cell_y)
-            index = iy * cell_width + ix
-            offset_x = cell_x - ix
-            offset_y = cell_y - iy
-            _w = float(xmax - xmin) / image_width
-            _h = float(ymax - ymin) / image_height
-            mask[i, index, :] = 1
-            prob[i, index, :] = [0] * classes
-            prob[i, index, c] = 1
-            coords[i, index, 0, :] = [offset_x, offset_y, math.sqrt(_w), math.sqrt(_h)]
-            offset_xy_min[i, index, 0, :] = [offset_x - _w / 2 * cell_width, offset_y - _h / 2 * cell_height]
-            offset_xy_max[i, index, 0, :] = [offset_x + _w / 2 * cell_width, offset_y + _h / 2 * cell_height]
-    wh = offset_xy_max - offset_xy_min
-    assert np.all(wh >= 0)
-    areas = np.multiply.reduce(wh, -1)
-    return mask, prob, coords, offset_xy_min, offset_xy_max, areas
-
-
-def calc_cell_xy(cell_height, cell_width):
-    cell_base = np.zeros([cell_height, cell_width, 2])
+def calc_cell_xy(cell_height, cell_width, dtype=np.float32):
+    cell_base = np.zeros([cell_height, cell_width, 2], dtype=dtype)
     for y in range(cell_height):
         for x in range(cell_width):
             cell_base[y, x, :] = [x, y]
@@ -83,7 +49,7 @@ class Model(object):
         cells = self.cell_height * self.cell_width
         with tf.name_scope('labels'):
             end = cells * classes
-            self.prob = tf.reshape(net[:, :end], [-1, cells, classes], name='prob')
+            self.prob = tf.reshape(net[:, :end], [-1, cells, 1, classes], name='prob')
             output = tf.reshape(net[:, end:], [-1, cells, boxes_per_cell, 5], name='output')
             end = 1
             self.iou = tf.identity(output[:, :, :, end], name='iou')
@@ -104,7 +70,7 @@ class Model(object):
             self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
-            self.conf = tf.identity(tf.reshape(self.prob, [-1, cells, 1, classes]) * tf.expand_dims(self.iou, -1), name='conf')
+            self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         with tf.name_scope('regularizer'):
             self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights:\d+')], name='regularizer')
         self.classes = classes
@@ -134,7 +100,7 @@ class Loss(dict):
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         iou_diff = tf.identity(model.iou - iou, name='iou_diff')
         with tf.name_scope('objectives'):
-            self['prob'] = tf.nn.l2_loss(self.mask * model.prob - self.prob, name='prob')
+            self['prob'] = tf.nn.l2_loss(tf.expand_dims(self.mask, -1) * model.prob - self.prob, name='prob')
             self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
             self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
@@ -177,7 +143,7 @@ class Builder(object):
     
     def tensorboard_histogram(self):
         try:
-            for t in match_tensor(self.config.get('tensorboard_histogram', 'tensor')):
+            for t in match_tensor(self.config.get('tensorboard', 'histogram')):
                 tf.summary.histogram(t.name, t)
         except configparser.NoOptionError:
             pass

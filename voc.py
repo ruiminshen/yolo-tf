@@ -15,36 +15,25 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os
 import sys
 import bs4
 
 
-def load_dataset(path, names):
-    _names = dict([(name, i) for i, name in enumerate(names)])
-    _path = os.path.join(path, 'Annotations')
-    imagenames = []
-    imageshapes = []
-    labels = []
-    for filename in os.listdir(_path):
-        with open(os.path.join(_path, filename), 'r') as f:
-            anno = bs4.BeautifulSoup(f.read(), 'xml').find('annotation')
-        objects = []
-        for obj in anno.find_all('object', recursive=False):
-            for bndbox, name in zip(obj.find_all('bndbox', recursive=False), obj.find_all('name', recursive=False)):
-                if name.text in _names:
-                    xmin = float(bndbox.find('xmin').text)
-                    ymin = float(bndbox.find('ymin').text)
-                    xmax = float(bndbox.find('xmax').text)
-                    ymax = float(bndbox.find('ymax').text)
-                    objects.append((xmin, ymin, xmax, ymax, _names[name.text]))
-                else:
-                    sys.stderr.write(name.text + ' not in names')
-        imagenames.append(anno.find('filename').text)
-        size = anno.find('size')
-        width = int(size.find('width').text)
-        height = int(size.find('height').text)
-        depth = int(size.find('depth').text)
-        imageshapes.append((height, width, depth))
-        labels.append(objects)
-    return imagenames, imageshapes, labels
+def load_dataset(path, name_index):
+    with open(path, 'r') as f:
+        anno = bs4.BeautifulSoup(f.read(), 'xml').find('annotation')
+    objects_class = []
+    objects_coord = []
+    for obj in anno.find_all('object', recursive=False):
+        for bndbox, name in zip(obj.find_all('bndbox', recursive=False), obj.find_all('name', recursive=False)):
+            if name.text in name_index:
+                objects_class.append(name_index[name.text])
+                xmin = float(bndbox.find('xmin').text)
+                ymin = float(bndbox.find('ymin').text)
+                xmax = float(bndbox.find('xmax').text)
+                ymax = float(bndbox.find('ymax').text)
+                objects_coord.append((xmin, ymin, xmax, ymax))
+            else:
+                sys.stderr.write(name.text + ' not in names')
+    size = anno.find('size')
+    return anno.find('filename').text, (int(size.find('height').text), int(size.find('width').text), int(size.find('depth').text)), objects_class, objects_coord

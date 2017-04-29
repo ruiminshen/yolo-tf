@@ -19,9 +19,31 @@ import os
 import argparse
 import configparser
 import importlib
-import pickle
+import tqdm
+import numpy as np
 import tensorflow as tf
 import voc
+import utils
+
+
+def cache_voc(writer, root, yolo, names, t):
+    with open(os.path.join(root, 'ImageSets', 'Main', t) + '.txt', 'r') as f:
+        filenames = [line.strip() for line in f]
+    namedict = dict([(name, i) for i, name in enumerate(names)])
+    for filename in tqdm.tqdm(filenames):
+        imagename, imageshape, objects_class, objects_coord = voc.load_dataset(os.path.join(root, 'Annotations', filename + '.xml'), namedict)
+        image_height, image_width, _ = imageshape
+        objects_coord = [(xmin / image_width, ymin / image_height, xmax / image_width, ymax / image_height) for xmin, ymin, xmax, ymax in objects_coord]
+        if len(objects_class) > 0:
+            imagepath = os.path.join(root, 'JPEGImages', imagename)
+            example = tf.train.Example(features=tf.train.Features(feature={
+                'imagepath': tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(imagepath)])),
+                'imageshape': tf.train.Feature(int64_list=tf.train.Int64List(value=imageshape)),
+                'objects': tf.train.Feature(bytes_list=tf.train.BytesList(value=[np.array(objects_class, dtype=np.int64).tostring(), np.array(objects_coord, dtype=np.float32).tostring()])),
+            }))
+            writer.write(example.SerializeToString())
+        else:
+            logger.warn(filename + ' has no object')
 
 
 def main():
@@ -29,30 +51,26 @@ def main():
     yolo = importlib.import_module(section)
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    path = os.path.expanduser(os.path.expandvars(args.path))
-    print('loading dataset from ' + path)
-    imagenames, imageshapes, labels = voc.load_dataset(path, names)
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    inference = getattr(getattr(yolo, 'inference'), config.get(section, 'inference'))
-    _scope, net = inference(tf.zeros([1, height, width, 3]), len(names), 1)
-    try:
-        _, cell_height, cell_width, _ = net.get_shape().as_list()
-    except ValueError:
-        _, cell_height, cell_width, _ = tf.get_default_graph().get_tensor_by_name("%s/conv:0" % _scope).get_shape().as_list()
-    print('size=%d, (width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (len(imagenames), width, height, cell_width, cell_height))
-    labels = yolo.transform_labels_voc(imageshapes, labels, width, height, cell_width, cell_height, len(names))
-    imagepaths = [os.path.join(path, 'JPEGImages', name) for name in imagenames]
-    path = os.path.expanduser(os.path.expandvars(config.get(section, 'cache')))
-    with open(path, 'wb') as f:
-        pickle.dump((imagepaths, *labels), f)
-    print('cache saved into ' + path)
+    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
+    cachedir = os.path.join(basedir, 'cache')
+    os.makedirs(cachedir, exist_ok=True)
+    for t in ('train', 'val', 'test'):
+        path = os.path.join(cachedir, t + '.tfrecord')
+        logger.info('write tfrecords file: ' + path)
+        with tf.python_io.TFRecordWriter(path) as writer:
+            with open(os.path.expanduser(os.path.expandvars(config.get('cache', 'voc'))), 'r') as f:
+                roots = [os.path.expanduser(os.path.expandvars(line.strip())) for line in f]
+            for root in roots:
+                logger.info('loading VOC %s dataset from %s' % (t, root))
+                cache_voc(writer, root, yolo, names, t)
+    logger.info('finished')
+    
 
 
 def make_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('path', help='PASCAL VOC data directory')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('-l', '--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -60,4 +78,9 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    main()
+    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
+    try:
+        main()
+    except Exception as e:
+        logger.exception('exception')
+        raise e

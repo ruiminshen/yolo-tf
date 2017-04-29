@@ -2,17 +2,17 @@
 
 ## Dependencies
 
-Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4
+Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4, tqdm
 
 ## Configuration
 
-Configurations are mainly defined in the "config.ini" file. For example, the model name is defined in option "model" in section "config", and the parameters defined in section "queue" is used to maximize GPU usage. The object classes file, the input data cache path, the model base directory (which identifies the parameter "logdir" for TensorBoard and the model data files), the model inference function and hyper-parameters are defined in the sections correspoding to the model name.
+Configurations are mainly defined in the "config.ini" file. For example, the model name is defined in option "model" in section "config", and the parameters defined in section "queue" is used to maximize GPU usage. The object classes file, the model base directory (which identifies the cache path, the parameter "logdir" for TensorBoard and the model data files), the model inference function and hyper-parameters are defined in the sections correspoding to the model name.
 
 ## Basic Usage
 
 - Download PASCAL VOC2007 data ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)). Extract these tars into one directory (such as "~/Documents/Database/").
 
-- Run "cache.py" (the PASCAL VOC2007 data directory (such as "~/Documents/Database/VOCdevkit/VOC2007") should be given) to create the cache file for the training program.
+- Run "cache.py" to create the cache file for the training program.
 
 - Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the model data saving frequency and the maximum number of steps. To manually terminate the training program, press Ctrl+C key and the model data will be saved.
 
