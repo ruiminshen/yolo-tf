@@ -51,19 +51,18 @@ def main():
     cachedir = os.path.join(basedir, 'cache')
     with tf.Session() as sess:
         with tf.name_scope('batch'):
-            with tf.device('/cpu:0'):
-                reader = tf.TFRecordReader()
-                _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, t + '.tfrecord') for t in args.types], shuffle=False))
-                example = tf.parse_single_example(serialized, features={
-                    'imagepath': tf.FixedLenFeature([], tf.string),
-                    'objects': tf.FixedLenFeature([2], tf.string),
-                })
-                image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
-                if config.getboolean('data_augmentation', 'enable'):
-                    image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
-                image_std = tf.image.per_image_standardization(image_rgb)
-                labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
-                batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
+            reader = tf.TFRecordReader()
+            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, t + '.tfrecord') for t in args.types], shuffle=False))
+            example = tf.parse_single_example(serialized, features={
+                'imagepath': tf.FixedLenFeature([], tf.string),
+                'objects': tf.FixedLenFeature([2], tf.string),
+            })
+            image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
+            if config.getboolean('data_augmentation', 'enable'):
+                image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
+            image_std = tf.image.per_image_standardization(image_rgb)
+            labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
+            batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
             image = tf.identity(batch[0], name='image')
         builder = yolo.Builder(args, config)
         builder.train(image, batch[1:])
