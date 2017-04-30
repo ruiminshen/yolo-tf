@@ -24,7 +24,7 @@ import time
 import math
 import multiprocessing
 import tensorflow as tf
-from tensorflow.python.ops import control_flow_ops
+import tensorflow.contrib.slim as slim
 import utils
 
 
@@ -84,13 +84,10 @@ def main():
         except configparser.NoOptionError:
             logger.warn('no option histogram in section tensorboard')
         with tf.name_scope('optimizer'):
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            if update_ops:
-                updates = tf.group(*update_ops)
-                loss = control_flow_ops.with_dependencies([updates], loss, name='loss_update_ops')
             global_step = tf.Variable(0, name='global_step')
             logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(loss, global_step=global_step)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate)
+            train_op = slim.learning.create_train_op(loss, optimizer, global_step=global_step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname), sess.graph)
         tf.global_variables_initializer().run()
@@ -114,7 +111,7 @@ def main():
         try:
             step = sess.run(global_step)
             while args.steps <= 0 or step < args.steps:
-                _, step = sess.run([optimizer, global_step])
+                _, step = sess.run([train_op, global_step])
                 if step % args.output_freq == 0:
                     logger.info('step=%d/%d' % (step, args.steps))
                     summary_writer.add_summary(sess.run(summary), step)
