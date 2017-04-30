@@ -19,27 +19,25 @@ import os
 import argparse
 import configparser
 import importlib
-import multiprocessing
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
+import tensorflow.contrib.slim as slim
 import utils
 
 
 class Drawer(object):
-    def __init__(self, sess, names, cell_width, cell_height, image, labels, model, loss):
+    def __init__(self, sess, names, cell_width, cell_height, image, labels, model, loss, feed_dict):
         self.sess = sess
         self.names = names
         self.cell_width, self.cell_height = cell_width, cell_height
         self.image, self.labels = image, labels
         self.model, self.loss = model, loss
+        self.feed_dict = feed_dict
         self.fig = plt.figure()
         self.ax = self.fig.gca()
         height, width, _ = image.shape
-        vmin = np.min(image)
-        vmax = np.max(image)
-        image = ((image - vmin) * 255 / (vmax - vmin)).astype(np.uint8)
         self.ax.imshow(image)
         self.plots = utils.draw_labels(self.ax, names, width, height, cell_width, cell_height, *labels)
         self.ax.set_xticks(np.arange(0, width, width / cell_width))
@@ -53,13 +51,14 @@ class Drawer(object):
         for p in self.plots:
             p.remove()
         self.plots = []
-        image_height, image_width, _ = self.image.shape
-        ix = int(event.xdata * self.cell_width / image_width)
-        iy = int(event.ydata * self.cell_height / image_height)
+        height, width, _ = self.image.shape
+        ix = int(event.xdata * self.cell_width / width)
+        iy = int(event.ydata * self.cell_height / height)
+        self.plots.append(self.ax.add_patch(patches.Rectangle((ix * width / self.cell_width, iy * height / self.cell_height), width / self.cell_width, height / self.cell_height, linewidth=0, facecolor='black', alpha=.2)))
         index = iy * self.cell_width + ix
-        prob, iou, xy_min, wh = self.sess.run([self.model.prob[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]])
-        xy_min = xy_min * [image_width, image_height] / [self.cell_width, self.cell_height]
-        wh = wh * [image_width, image_height] / [self.cell_width, self.cell_height]
+        prob, iou, xy_min, wh = self.sess.run([self.model.prob[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]], feed_dict=self.feed_dict)
+        xy_min = xy_min * [width, height] / [self.cell_width, self.cell_height]
+        wh = wh * [width, height] / [self.cell_width, self.cell_height]
         for _prob, _iou, (x, y), (w, h), color in zip(prob, iou, xy_min, wh, self.colors):
             index = np.argmax(_prob)
             name = self.names[index]
@@ -75,8 +74,6 @@ def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module(section)
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    modeldir = os.path.join(basedir, 'model')
-    modelpath = os.path.join(modeldir, 'model.ckpt')
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
     width = config.getint(section, 'width')
@@ -88,34 +85,28 @@ def main():
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     cachedir = os.path.join(basedir, 'cache')
     with tf.Session() as sess:
-        with tf.name_scope('batch'):
-            reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
-            example = tf.parse_single_example(serialized, features={
-                'imagepath': tf.FixedLenFeature([], tf.string),
-                'objects': tf.FixedLenFeature([2], tf.string),
-            })
-            image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
-            if config.getboolean('data_augmentation', 'enable'):
-                image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
-            image_std = tf.image.per_image_standardization(image_rgb)
-            labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
-            batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=1, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
-            image = tf.identity(batch[0], name='image')
+        image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+        image_std = tf.image.per_image_standardization(image_rgb)
+        image_rgb = tf.cast(image_rgb, tf.uint8)
+        ph_image = tf.placeholder(image_std.dtype, [1] + image_std.get_shape().as_list(), name='ph_image')
         builder = yolo.Builder(args, config)
-        builder(image)
-        loss = builder.loss(labels)
+        builder(ph_image)
+        ph_labels = [tf.placeholder(l.dtype, [1] + l.get_shape().as_list(), name='ph_' + l.op.name) for l in labels]
+        loss = builder.loss(ph_labels)
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
-        batch_image, batch_labels = sess.run([image, batch[1:]])
+        _image_rgb, _image_std, _labels = sess.run([image_rgb, image_std, labels])
         coord.request_stop()
         coord.join(threads)
-        logger.info('load model')
-        saver = tf.train.Saver()
-        saver.restore(sess, modelpath)
-        image, labels = batch_image[0], [l[0] for l in batch_labels]
-        _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, image, labels, builder.model, loss)
+        feed_dict = dict([(ph, np.expand_dims(d, 0)) for ph, d in zip(ph_labels, _labels)])
+        feed_dict[ph_image] = np.expand_dims(_image_std, 0)
+        global_step = tf.contrib.framework.get_or_create_global_step()
+        model_path = tf.train.latest_checkpoint(os.path.join(os.path.expanduser(os.path.expandvars(config.get(section, 'basedir'))), 'logdir'))
+        logger.info('load ' + model_path)
+        slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
+        logger.info('global_step=%d' % sess.run(global_step))
+        _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, _image_rgb, _labels, builder.model, loss, feed_dict)
         plt.show()
 
 

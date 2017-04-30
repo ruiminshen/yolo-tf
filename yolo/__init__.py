@@ -124,8 +124,3 @@ class Builder(object):
             loss_regularizer = tf.identity(self.hparam_regularizer * self.model.regularizer, name='loss_regularizer')
             loss = tf.identity(loss_objectives + loss_regularizer, name='loss')
         return loss
-    
-    def log_hparam(self, sess, logger):
-        keys, values = zip(*self.hparam.items())
-        logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
-        logger.info('hparam_regularizer=%f' % sess.run(self.hparam_regularizer))

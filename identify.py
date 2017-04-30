@@ -24,6 +24,7 @@ import scipy.misc
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
+import tensorflow.contrib.slim as slim
 import utils
 
 
@@ -59,9 +60,6 @@ def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
 def main():
     section = config.get('config', 'model')
     yolo = importlib.import_module(section)
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    modeldir = os.path.join(basedir, 'model')
-    modelpath = os.path.join(modeldir, 'model.ckpt')
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     image_rgb = scipy.misc.imresize(scipy.misc.imread(args.image), [height, width])
@@ -71,13 +69,11 @@ def main():
         builder = yolo.Builder(args, config)
         image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
         builder(image)
-        with tf.name_scope('optimizer'):
-            global_step = tf.Variable(0, name='global_step')
-        tf.global_variables_initializer().run()
-        logger.info('load model')
-        saver = tf.train.Saver()
-        saver.restore(sess, modelpath)
-        logger.info('step=%d' % sess.run(global_step))
+        global_step = tf.contrib.framework.get_or_create_global_step()
+        model_path = tf.train.latest_checkpoint(os.path.join(os.path.expanduser(os.path.expandvars(config.get(section, 'basedir'))), 'logdir'))
+        logger.info('load ' + model_path)
+        slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
+        logger.info('global_step=%d' % sess.run(global_step))
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image_rgb)

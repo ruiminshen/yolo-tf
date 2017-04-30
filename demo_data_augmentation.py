@@ -41,23 +41,14 @@ def main():
     cachedir = os.path.join(basedir, 'cache')
     with tf.Session() as sess:
         with tf.name_scope('batch'):
-            reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
-            example = tf.parse_single_example(serialized, features={
-                'imagepath': tf.FixedLenFeature([], tf.string),
-                'objects': tf.FixedLenFeature([2], tf.string),
-            })
-            image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
-            if config.getboolean('data_augmentation', 'enable'):
-                image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
-            #image_std = tf.image.per_image_standardization(image_rgb)
-            labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
-            batch = tf.train.shuffle_batch((tf.cast(image_rgb, tf.uint8),) + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
-            image = tf.identity(batch[0], name='image')
+            image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+            batch = tf.train.shuffle_batch((tf.cast(image_rgb, tf.uint8),) + labels, batch_size=args.batch_size,
+                capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count()
+            )
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
-        batch_image, batch_labels = sess.run([image, batch[1:]])
+        batch_image, batch_labels = sess.run([batch[0], batch[1:]])
         coord.request_stop()
         coord.join(threads)
     print(np.min(batch_image), np.max(batch_image))

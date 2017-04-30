@@ -21,109 +21,84 @@ import configparser
 import importlib
 import shutil
 import time
-import math
 import multiprocessing
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import utils
 
 
-def main():
+def summary_scalar(builder):
+    for key in builder.objectives:
+        tf.summary.scalar(key, builder.objectives[key])
+    try:
+        tf.summary.scalar('regularizer', builder.model.regularizer)
+    except AttributeError:
+        logger.warn('model regularizer not exists')
+
+
+def tensorboard_histogram(config):
+    try:
+        for t in utils.match_tensor(config.get('tensorboard', 'histogram')):
+            tf.summary.histogram(t.op.name, t)
+    except configparser.NoOptionError:
+        logger.warn('no option histogram in section tensorboard')
+
+
+def log_hparam(builder, sess):
+    keys, values = zip(*builder.hparam.items())
+    logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
+    try:
+        logger.info('hparam_regularizer=%f' % sess.run(builder.hparam_regularizer))
+    except AttributeError:
+        pass
+
+
+def main(_):
     section = config.get('config', 'model')
     yolo = importlib.import_module(section)
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
-        names = [line.strip() for line in f]
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    modeldir = os.path.join(basedir, 'model')
-    modelpath = os.path.join(modeldir, 'model.ckpt')
-    if args.reset and os.path.exists(modeldir):
-        logger.warn('delete modeldir: ' + modeldir)
-        shutil.rmtree(modeldir, ignore_errors=True)
     logdir = os.path.join(basedir, 'logdir')
     if args.delete:
-        logger.warn('delete logdir: ' + logdir)
+        logger.warn('delete logging directory: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
+    cachedir = os.path.join(basedir, 'cache')
+    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+        names = [line.strip() for line in f]
     width = config.getint(section, 'width')
     height = config.getint(section, 'height')
     downsampling = config.getint(section, 'downsampling')
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
-    cachedir = os.path.join(basedir, 'cache')
-    with tf.Session() as sess:
-        with tf.name_scope('batch'):
-            reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
-            example = tf.parse_single_example(serialized, features={
-                'imagepath': tf.FixedLenFeature([], tf.string),
-                'objects': tf.FixedLenFeature([2], tf.string),
-            })
-            image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
-            if config.getboolean('data_augmentation', 'enable'):
-                image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
-            with tf.name_scope('per_image_standardization'):
-                image_std = tf.image.per_image_standardization(image_rgb)
-            with tf.device('/cpu:0'):
-                labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
-            batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
-            image = tf.identity(batch[0], name='image')
-        builder = yolo.Builder(args, config)
-        builder(image, training=True)
-        loss = builder.loss(batch[1:])
-        with tf.name_scope('loss'):
-            for key in builder.objectives:
-                tf.summary.scalar(key, builder.objectives[key])
-            try:
-                tf.summary.scalar('regularizer', builder.model.regularizer)
-            except AttributeError:
-                logger.warn('model regularizer not exists')
-            tf.summary.scalar('loss', loss)
-        try:
-            for t in utils.match_tensor(config.get('tensorboard', 'histogram')):
-                tf.summary.histogram(t.op.name, t)
-        except configparser.NoOptionError:
-            logger.warn('no option histogram in section tensorboard')
-        with tf.name_scope('optimizer'):
-            global_step = tf.Variable(0, name='global_step')
-            logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate)
-            train_op = slim.learning.create_train_op(loss, optimizer, global_step=global_step)
-        summary = tf.summary.merge_all()
-        summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname), sess.graph)
-        tf.global_variables_initializer().run()
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess, coord)
-        logger.info('load model')
+    logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    with tf.name_scope('batch'):
+        image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+        with tf.name_scope('per_image_standardization'):
+            image_std = tf.image.per_image_standardization(image_rgb)
+        batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size,
+            capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count()
+        )
+    builder = yolo.Builder(args, config)
+    builder(batch[0], training=True)
+    loss = builder.loss(batch[1:])
+    with tf.name_scope('loss'):
+        summary_scalar(builder)
+        tf.summary.scalar('loss', loss)
+    tensorboard_histogram(config)
+    logger.info('learning rate=%f' % args.learning_rate)
+    with tf.name_scope('optimizer'):
+        optimizer = tf.train.RMSPropOptimizer(args.learning_rate)
+        train_op = slim.learning.create_train_op(loss, optimizer)
+    with tf.name_scope('train'):
         saver = tf.train.Saver()
-        if os.path.exists(modeldir):
-            try:
-                saver.restore(sess, modelpath)
-            except:
-                logger.warn('error occurs while loading model: ' + modelpath)
-        def save():
-            if math.isnan(sess.run(loss)):
-                raise FloatingPointError('a NaN loss value captured')
-            os.makedirs(modeldir, exist_ok=True)
-            saver.save(sess, modelpath)
-            logger.info('model saved into: ' + modelpath)
-        cmd = 'tensorboard --logdir ' + logdir
-        logger.info('run: ' + cmd)
-        try:
-            step = sess.run(global_step)
-            while args.steps <= 0 or step < args.steps:
-                _, step = sess.run([train_op, global_step])
-                if step % args.output_freq == 0:
-                    logger.info('step=%d/%d' % (step, args.steps))
-                    summary_writer.add_summary(sess.run(summary), step)
-                if step % args.save_freq == 0:
-                    save()
-        except KeyboardInterrupt:
-            logger.warn('keyboard interrupt captured')
-        coord.request_stop()
-        coord.join(threads)
-        save()
-        builder.log_hparam(sess, logger)
-    #os.system(cmd)
+        summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname))
+        logger.info('tensorboard --logdir ' + logdir)
+        slim.learning.train(train_op, logdir,
+            master=args.master, is_chief=(args.task == 0),
+            saver=saver, summary_writer=summary_writer,
+            number_of_steps=args.steps,
+            save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
+        )
 
 
 def make_args():
@@ -131,14 +106,15 @@ def make_args():
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
-    parser.add_argument('-s', '--steps', type=int, default=0, help='max number of steps')
-    parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
+    parser.add_argument('-m', '--master', default='', help='master address')
+    parser.add_argument('-t', '--task', type=int, default=0, help='task ID')
+    parser.add_argument('-s', '--steps', type=int, default=None, help='max number of steps')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
-    parser.add_argument('--seed', type=int)
-    parser.add_argument('--output_freq', default=10, type=int, help='output frequency')
-    parser.add_argument('--save_freq', default=500, type=int, help='save frequency')
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--summary_secs', default=5, type=int, help='seconds to save summaries')
+    parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')
     parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
     return parser.parse_args()
 
@@ -149,7 +125,7 @@ if __name__ == '__main__':
     config.read(args.config)
     logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
     try:
-        main()
+        tf.app.run()
     except Exception as e:
         logger.exception('exception')
         raise e

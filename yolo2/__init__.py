@@ -113,7 +113,3 @@ class Builder(yolo.Builder):
                 loss_objectives = tf.reduce_sum([self.objectives[key] * self.hparam[key] for key in self.objectives], name='loss_objectives')
             loss = tf.identity(loss_objectives, name='loss')
         return loss
-    
-    def log_hparam(self, sess, logger):
-        keys, values = zip(*self.hparam.items())
-        logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))

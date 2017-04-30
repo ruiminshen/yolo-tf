@@ -70,8 +70,8 @@ def transform_labels(objects_class, objects_coord, classes, cell_width, cell_hei
     for c, (xmin, ymin, xmax, ymax) in zip(objects_class, objects_coord):
         x = cell_width * (xmin + xmax) / 2
         y = cell_height * (ymin + ymax) / 2
-        assert 0 <= x < cell_width
-        assert 0 <= y < cell_height
+        #assert 0 <= x <= cell_width
+        #assert 0 <= y <= cell_height
         ix = math.floor(x)
         iy = math.floor(y)
         index = iy * cell_width + ix
@@ -104,6 +104,46 @@ def decode_labels(objects_class, objects_coord, classes, cell_width, cell_height
     return mask, prob, coords, offset_xy_min, offset_xy_max, areas
 
 
+def data_augmentation(image, labels, config):
+    section = inspect.stack()[0][3]
+    _image = image
+    with tf.name_scope(section):
+        if config.getboolean(section, 'random_brightness'):
+            _image = tf.image.random_brightness(_image, max_delta=63)
+        if config.getboolean(section, 'random_saturation'):
+            _image = tf.image.random_saturation(_image, lower=0.5, upper=1.5)
+        if config.getboolean(section, 'random_hue'):
+            _image = tf.image.random_hue(_image, max_delta=0.032)
+        if config.getboolean(section, 'random_contrast'):
+            _image = tf.image.random_contrast(_image, lower=0.5, upper=1.5)
+        if config.getboolean(section, 'noise'):
+            _image += tf.identity(tf.random_normal(_image.get_shape(), stddev=15) + 127, name='noise')
+        grayscale_probability = config.getfloat(section, 'grayscale_probability')
+        if grayscale_probability > 0:
+            with tf.name_scope('random_grayscale'):
+                image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
+        _image = tf.clip_by_value(_image, 0, 255)
+        with tf.name_scope('random_enable'):
+            image = tf.cond(tf.random_uniform([], 0, 1) < config.getfloat(section, 'enable_probability'), lambda: _image, lambda: image)
+    return image, labels
+
+
+def load_image_labels(paths, classes, width, height, cell_width, cell_height, config):
+    with tf.name_scope('batch'):
+        reader = tf.TFRecordReader()
+        _, serialized = reader.read(tf.train.string_input_producer(paths))
+        example = tf.parse_single_example(serialized, features={
+            'imagepath': tf.FixedLenFeature([], tf.string),
+            'objects': tf.FixedLenFeature([2], tf.string),
+        })
+        image_rgb, objects_class, objects_coord = decode_image_objects(example, width, height)
+        if config.getboolean('data_augmentation', 'enable'):
+            image_rgb, objects_coord = data_augmentation(image_rgb, objects_coord, config)
+        with tf.device('/cpu:0'):
+            labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
+    return image_rgb, labels
+
+
 def draw_labels(ax, names, width, height, cell_width, cell_height, mask, prob, coords, xy_min, xy_max, areas, color='red', rtol=1e-3):
     plots = []
     for i, (_mask, _prob, _coords, _xy_min, _xy_max, _areas) in enumerate(zip(mask, prob, coords, xy_min, xy_max, areas)):
@@ -129,30 +169,6 @@ def draw_labels(ax, names, width, height, cell_width, cell_height, mask, prob, c
             #np.testing.assert_allclose(wh / [cell_width, cell_height], [_w, _h], rtol=rtol)
             #np.testing.assert_allclose(_xy_min + wh / 2, [offset_x, offset_y], rtol=rtol)
     return plots
-
-
-def data_augmentation(image, labels, config):
-    section = inspect.stack()[0][3]
-    _image = image
-    with tf.name_scope(section):
-        if config.getboolean(section, 'random_brightness'):
-            _image = tf.image.random_brightness(_image, max_delta=63)
-        if config.getboolean(section, 'random_saturation'):
-            _image = tf.image.random_saturation(_image, lower=0.5, upper=1.5)
-        if config.getboolean(section, 'random_hue'):
-            _image = tf.image.random_hue(_image, max_delta=0.032)
-        if config.getboolean(section, 'random_contrast'):
-            _image = tf.image.random_contrast(_image, lower=0.5, upper=1.5)
-        if config.getboolean(section, 'noise'):
-            _image += tf.identity(tf.random_normal(_image.get_shape(), stddev=15) + 127, name='noise')
-        grayscale_probability = config.getfloat(section, 'grayscale_probability')
-        if grayscale_probability > 0:
-            with tf.name_scope('random_grayscale'):
-                image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
-        _image = tf.clip_by_value(_image, 0, 255)
-        with tf.name_scope('random_enable'):
-            image = tf.cond(tf.random_uniform([], 0, 1) < config.getfloat(section, 'enable_probability'), lambda: _image, lambda: image)
-    return image, labels
 
 
 def per_image_standardization(image):
