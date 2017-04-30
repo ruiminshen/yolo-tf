@@ -26,8 +26,12 @@ import voc
 import utils
 
 
-def cache_voc(writer, root, yolo, names, t):
-    with open(os.path.join(root, 'ImageSets', 'Main', t) + '.txt', 'r') as f:
+def cache_voc(writer, root, yolo, names, profile):
+    path = os.path.join(root, 'ImageSets', 'Main', profile) + '.txt'
+    if not os.path.exists(path):
+        logger.warn(path + ' not exists')
+        return
+    with open(path, 'r') as f:
         filenames = [line.strip() for line in f]
     namedict = dict([(name, i) for i, name in enumerate(names)])
     for filename in tqdm.tqdm(filenames):
@@ -54,15 +58,15 @@ def main():
     basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
     cachedir = os.path.join(basedir, 'cache')
     os.makedirs(cachedir, exist_ok=True)
-    for t in ('train', 'val', 'test'):
-        path = os.path.join(cachedir, t + '.tfrecord')
+    for profile in args.profile:
+        path = os.path.join(cachedir, profile + '.tfrecord')
         logger.info('write tfrecords file: ' + path)
         with tf.python_io.TFRecordWriter(path) as writer:
             with open(os.path.expanduser(os.path.expandvars(config.get('cache', 'voc'))), 'r') as f:
                 roots = [os.path.expanduser(os.path.expandvars(line.strip())) for line in f]
             for root in roots:
-                logger.info('loading VOC %s dataset from %s' % (t, root))
-                cache_voc(writer, root, yolo, names, t)
+                logger.info('loading VOC %s dataset from %s' % (profile, root))
+                cache_voc(writer, root, yolo, names, profile)
     logger.info('finished')
     
 
@@ -71,6 +75,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
+    parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val', 'test'])
     return parser.parse_args()
 
 if __name__ == '__main__':

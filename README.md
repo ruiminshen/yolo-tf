@@ -10,7 +10,7 @@ Configurations are mainly defined in the "config.ini" file. For example, the mod
 
 ## Basic Usage
 
-- Download PASCAL VOC2007 data ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)). Extract these tars into one directory (such as "~/Documents/Database/").
+- Download PASCAL VOC2007 ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)) and VOC2012 ([training and validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar)) data. Extract these tars into one directory (such as "~/Documents/Database/").
 
 - Run "cache.py" to create the cache file for the training program.
 

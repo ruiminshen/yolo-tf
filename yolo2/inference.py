@@ -16,13 +16,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import inspect
+import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from yolo.inference import leaky_relu
 
 
-def tiny(net, classes, num_anchors, training=False):
+def tiny(net, classes, num_anchors, training=False, stddev=0.1):
     scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
-    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], normalizer_fn=slim.batch_norm, normalizer_params={'center': True, 'scale': True, 'is_training': training, 'updates_collections': None}, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
+    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], normalizer_fn=slim.batch_norm, normalizer_params={'scale': True}, weights_initializer=tf.truncated_normal_initializer(stddev=stddev), activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0
         channels = 16
         for _ in range(5):

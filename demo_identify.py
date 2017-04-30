@@ -90,7 +90,7 @@ def main():
     with tf.Session() as sess:
         with tf.name_scope('batch'):
             reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, t + '.tfrecord') for t in args.types], shuffle=False))
+            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
             example = tf.parse_single_example(serialized, features={
                 'imagepath': tf.FixedLenFeature([], tf.string),
                 'objects': tf.FixedLenFeature([2], tf.string),
@@ -103,9 +103,8 @@ def main():
             batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=1, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
             image = tf.identity(batch[0], name='image')
         builder = yolo.Builder(args, config)
-        builder.eval(image)
-        with tf.name_scope('loss'):
-            loss = yolo.Loss(builder.model_eval, *labels)
+        builder(image)
+        loss = builder.loss(labels)
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
@@ -116,7 +115,7 @@ def main():
         saver = tf.train.Saver()
         saver.restore(sess, modelpath)
         image, labels = batch_image[0], [l[0] for l in batch_labels]
-        _ = Drawer(sess, names, builder.model_eval.cell_width, builder.model_eval.cell_height, image, labels, builder.model_eval, loss)
+        _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, image, labels, builder.model, loss)
         plt.show()
 
 
@@ -124,7 +123,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-t', '--types', default=['train', 'val'])
+    parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('--seed', type=int)
     return parser.parse_args()
 

@@ -24,6 +24,7 @@ import time
 import math
 import multiprocessing
 import tensorflow as tf
+from tensorflow.python.ops import control_flow_ops
 import utils
 
 
@@ -52,7 +53,7 @@ def main():
     with tf.Session() as sess:
         with tf.name_scope('batch'):
             reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, t + '.tfrecord') for t in args.types], shuffle=False))
+            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
             example = tf.parse_single_example(serialized, features={
                 'imagepath': tf.FixedLenFeature([], tf.string),
                 'objects': tf.FixedLenFeature([2], tf.string),
@@ -60,17 +61,36 @@ def main():
             image_rgb, objects_class, objects_coord = utils.decode_image_objects(example, width, height)
             if config.getboolean('data_augmentation', 'enable'):
                 image_rgb, objects_coord = utils.data_augmentation(image_rgb, objects_coord, config)
-            image_std = tf.image.per_image_standardization(image_rgb)
-            labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
+            with tf.name_scope('per_image_standardization'):
+                image_std = tf.image.per_image_standardization(image_rgb)
+            with tf.device('/cpu:0'):
+                labels = utils.decode_labels(objects_class, objects_coord, len(names), cell_width, cell_height)
             batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size, capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count())
             image = tf.identity(batch[0], name='image')
         builder = yolo.Builder(args, config)
-        builder.train(image, batch[1:])
-        builder.tensorboard_histogram()
+        builder(image, training=True)
+        loss = builder.loss(batch[1:])
+        with tf.name_scope('loss'):
+            for key in builder.objectives:
+                tf.summary.scalar(key, builder.objectives[key])
+            try:
+                tf.summary.scalar('regularizer', builder.model.regularizer)
+            except AttributeError:
+                logger.warn('model regularizer not exists')
+            tf.summary.scalar('loss', loss)
+        try:
+            for t in utils.match_tensor(config.get('tensorboard', 'histogram')):
+                tf.summary.histogram(t.op.name, t)
+        except configparser.NoOptionError:
+            logger.warn('no option histogram in section tensorboard')
         with tf.name_scope('optimizer'):
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            if update_ops:
+                updates = tf.group(*update_ops)
+                loss = control_flow_ops.with_dependencies([updates], loss, name='loss_update_ops')
             global_step = tf.Variable(0, name='global_step')
             logger.info('learning rate=%f' % args.learning_rate)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(builder.loss, global_step=global_step)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate).minimize(loss, global_step=global_step)
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname), sess.graph)
         tf.global_variables_initializer().run()
@@ -84,7 +104,7 @@ def main():
             except:
                 logger.warn('error occurs while loading model: ' + modelpath)
         def save():
-            if math.isnan(sess.run(builder.loss)):
+            if math.isnan(sess.run(loss)):
                 raise FloatingPointError('a NaN loss value captured')
             os.makedirs(modeldir, exist_ok=True)
             saver.save(sess, modelpath)
@@ -113,7 +133,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-t', '--types', default=['train', 'val'])
+    parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-s', '--steps', type=int, default=0, help='max number of steps')
     parser.add_argument('-r', '--reset', action='store_true', help='delete saved model')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')

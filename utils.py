@@ -16,7 +16,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
+import re
 import math
+import configparser
 import logging
 import getpass
 import inspect
@@ -46,9 +48,10 @@ def decode_image_objects(example, width, height):
     with tf.name_scope(inspect.stack()[0][3]):
         imagepath = example['imagepath']
         objects = example['objects']
-        objects_class = tf.decode_raw(objects[0], tf.int64)
-        objects_coord = tf.decode_raw(objects[1], tf.float32)
-        objects_coord = tf.reshape(objects_coord, [-1, 4])
+        with tf.name_scope('decode_objects'):
+            objects_class = tf.decode_raw(objects[0], tf.int64, name='objects_class')
+            objects_coord = tf.decode_raw(objects[1], tf.float32)
+            objects_coord = tf.reshape(objects_coord, [-1, 4], name='objects_coord')
         with tf.name_scope('load_image'):
             imagefile = tf.read_file(imagepath)
             image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
@@ -155,6 +158,24 @@ def data_augmentation(image, labels, config):
 def per_image_standardization(image):
     stddev = np.std(image)
     return (image - np.mean(image)) / max(stddev, 1.0 / np.sqrt(np.multiply.reduce(image.shape)))
+
+
+def match_trainable_variables(pattern):
+    r = re.compile(pattern)
+    return [v for v in tf.trainable_variables() if r.match(v.op.name)]
+
+
+def match_tensor(pattern):
+    r = re.compile(pattern)
+    return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and r.match(op.name)]
+
+
+def tensorboard_histogram(pattern):
+    try:
+        for t in match_tensor(pattern):
+            tf.summary.histogram(t.op.name, t)
+    except configparser.NoOptionError:
+        pass
 
 
 def get_factor2(x):

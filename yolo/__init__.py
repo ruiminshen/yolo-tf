@@ -22,6 +22,7 @@ import math
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import utils
 import yolo.inference as inference
 
 
@@ -31,16 +32,6 @@ def calc_cell_xy(cell_height, cell_width, dtype=np.float32):
         for x in range(cell_width):
             cell_base[y, x, :] = [x, y]
     return cell_base
-
-
-def match_trainable_variables(pattern):
-    r = re.compile(pattern)
-    return [v for v in tf.trainable_variables() if r.match(v.name)]
-
-
-def match_tensor(pattern):
-    r = re.compile(pattern)
-    return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and r.match(op.values()[0].name)]
 
 
 class Model(object):
@@ -72,12 +63,12 @@ class Model(object):
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
             self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         with tf.name_scope('regularizer'):
-            self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights:\d+')], name='regularizer')
+            self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name='regularizer')
         self.classes = classes
         self.boxes_per_cell = boxes_per_cell
 
 
-class Loss(dict):
+class Objectives(dict):
     def __init__(self, model, mask, prob, coords, offset_xy_min, offset_xy_max, areas):
         self.model = model
         self.mask = mask
@@ -116,37 +107,23 @@ class Builder(object):
         self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
         self.inference = getattr(inference, config.get(section, 'inference'))
     
-    def train(self, data, labels, scope='train'):
+    def __call__(self, data, training=False):
+        _scope, net = self.inference(data, len(self.names), self.boxes_per_cell, training=training)
+        with tf.name_scope('model'):
+            self.model = Model(net, _scope, len(self.names), self.boxes_per_cell)
+    
+    def loss(self, labels):
         section = __name__.split('.')[-1]
-        _scope, net = self.inference(data, len(self.names), self.boxes_per_cell, training=True)
-        with tf.name_scope(scope):
-            with tf.name_scope('model'):
-                self.model_train = Model(net, _scope, len(self.names), self.boxes_per_cell)
-            with tf.name_scope('loss'):
-                self.loss_train = Loss(self.model_train, *labels)
-                with tf.variable_scope('hparam'):
-                    self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
-                    self.hparam_regularizer = tf.Variable(self.config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
-                with tf.name_scope('loss_objectives'):
-                    loss_objectives = tf.reduce_sum([self.loss_train[key] * self.hparam[key] for key in self.loss_train], name='loss_objectives')
-                loss_regularizer = tf.identity(self.hparam_regularizer * self.model_train.regularizer, name='loss_regularizer')
-                self.loss = tf.identity(loss_objectives + loss_regularizer, name='loss')
-                for key in self.loss_train:
-                    tf.summary.scalar(key, self.loss_train[key])
-                tf.summary.scalar('regularizer', self.model_train.regularizer)
-                tf.summary.scalar('loss', self.loss)
-    
-    def eval(self, data, scope='eval'):
-        _scope, net = self.inference(data, len(self.names), self.boxes_per_cell, training=True)
-        with tf.name_scope(scope):
-            self.model_eval = Model(net, _scope, len(self.names), self.boxes_per_cell)
-    
-    def tensorboard_histogram(self):
-        try:
-            for t in match_tensor(self.config.get('tensorboard', 'histogram')):
-                tf.summary.histogram(t.name, t)
-        except configparser.NoOptionError:
-            pass
+        with tf.name_scope('objectives'):
+            self.objectives = Objectives(self.model, *labels)
+            with tf.variable_scope('hparam'):
+                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
+                self.hparam_regularizer = tf.Variable(self.config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
+            with tf.name_scope('loss_objectives'):
+                loss_objectives = tf.reduce_sum([self.objectives[key] * self.hparam[key] for key in self.objectives], name='loss_objectives')
+            loss_regularizer = tf.identity(self.hparam_regularizer * self.model.regularizer, name='loss_regularizer')
+            loss = tf.identity(loss_objectives + loss_regularizer, name='loss')
+        return loss
     
     def log_hparam(self, sess, logger):
         keys, values = zip(*self.hparam.items())

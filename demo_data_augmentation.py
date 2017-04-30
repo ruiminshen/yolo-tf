@@ -42,7 +42,7 @@ def main():
     with tf.Session() as sess:
         with tf.name_scope('batch'):
             reader = tf.TFRecordReader()
-            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, t + '.tfrecord') for t in args.types], shuffle=False))
+            _, serialized = reader.read(tf.train.string_input_producer([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], shuffle=False))
             example = tf.parse_single_example(serialized, features={
                 'imagepath': tf.FixedLenFeature([], tf.string),
                 'objects': tf.FixedLenFeature([2], tf.string),
@@ -79,7 +79,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
-    parser.add_argument('-t', '--types', default=['train', 'val'])
+    parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
     return parser.parse_args()
 

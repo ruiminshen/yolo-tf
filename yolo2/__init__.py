@@ -57,7 +57,7 @@ class Model(object):
         self.anchors = anchors
 
 
-class Loss(dict):
+class Objectives(dict):
     def __init__(self, model, mask, prob, coords, offset_xy_min, offset_xy_max, areas):
         self.model = model
         self.mask = mask
@@ -98,28 +98,22 @@ class Builder(yolo.Builder):
         self.anchors = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'anchors'))), sep='\t').values
         self.inference = getattr(inference, config.get(section, 'inference'))
     
-    def train(self, data, labels, scope='train'):
+    def __call__(self, data, training=False):
+        _, net = self.inference(data, len(self.names), len(self.anchors), training=training)
+        with tf.name_scope('model'):
+            self.model = Model(net, len(self.names), self.anchors)
+    
+    def loss(self, labels):
         section = __name__.split('.')[-1]
-        _, net = self.inference(data, len(self.names), len(self.anchors), training=True)
-        with tf.name_scope(scope):
-            with tf.name_scope('model'):
-                self.model_train = Model(net, len(self.names), self.anchors)
-            with tf.name_scope('loss'):
-                self.loss_train = Loss(self.model_train, *labels)
-                with tf.variable_scope('hparam'):
-                    self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
-                with tf.name_scope('loss_objectives'):
-                    loss_objectives = tf.reduce_sum([self.loss_train[key] * self.hparam[key] for key in self.loss_train], name='loss_objectives')
-                self.loss = loss_objectives
-                for key in self.loss_train:
-                    tf.summary.scalar(key, self.loss_train[key])
-                tf.summary.scalar('loss', self.loss)
+        with tf.name_scope('objectives'):
+            self.objectives = Objectives(self.model, *labels)
+            with tf.variable_scope('hparam'):
+                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
+            with tf.name_scope('loss_objectives'):
+                loss_objectives = tf.reduce_sum([self.objectives[key] * self.hparam[key] for key in self.objectives], name='loss_objectives')
+            loss = tf.identity(loss_objectives, name='loss')
+        return loss
     
     def log_hparam(self, sess, logger):
         keys, values = zip(*self.hparam.items())
         logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
-    
-    def eval(self, data, scope='eval'):
-        _, net = self.inference(data, len(self.names), len(self.anchors))
-        with tf.name_scope(scope):
-            self.model_eval = Model(net, len(self.names), self.anchors)

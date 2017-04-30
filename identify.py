@@ -70,7 +70,7 @@ def main():
     with tf.Session() as sess:
         builder = yolo.Builder(args, config)
         image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
-        builder.eval(image)
+        builder(image)
         with tf.name_scope('optimizer'):
             global_step = tf.Variable(0, name='global_step')
         tf.global_variables_initializer().run()
@@ -81,15 +81,15 @@ def main():
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(image_rgb)
-        conf, xy_min, xy_max = sess.run([builder.model_eval.conf * tf.to_float(builder.model_eval.conf > args.threshold), builder.model_eval.xy_min, builder.model_eval.xy_max], feed_dict={image: image_std})
+        conf, xy_min, xy_max = sess.run([builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max], feed_dict={image: image_std})
         boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         cnt = 0
         for _conf, _xy_min, _xy_max in boxes:
             index = np.argmax(_conf)
             if _conf[index] > args.threshold:
                 wh = _xy_max - _xy_min
-                _xy_min = _xy_min * [width, height] / [builder.model_eval.cell_width, builder.model_eval.cell_height]
-                _wh = wh * [width, height] / [builder.model_eval.cell_width, builder.model_eval.cell_height]
+                _xy_min = _xy_min * [width, height] / [builder.model.cell_width, builder.model.cell_height]
+                _wh = wh * [width, height] / [builder.model.cell_width, builder.model.cell_height]
                 linewidth = min(_conf[index] * 10, 3)
                 ax.add_patch(patches.Rectangle(_xy_min, _wh[0], _wh[1], linewidth=linewidth, edgecolor=args.color, facecolor='none'))
                 ax.annotate(builder.names[index] + ' (%.1f%%)' % (_conf[index] * 100), _xy_min, color=args.color)
