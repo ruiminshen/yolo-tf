@@ -58,11 +58,11 @@ def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
 
 
 def main():
-    section = config.get('config', 'model')
-    yolo = importlib.import_module(section)
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    image_rgb = scipy.misc.imresize(scipy.misc.imread(args.image), [height, width])
+    model = config.get('config', 'model')
+    yolo = importlib.import_module(model)
+    width = config.getint(model, 'width')
+    height = config.getint(model, 'height')
+    image_rgb = scipy.misc.imresize(scipy.misc.imread(os.path.expanduser(os.path.expandvars(args.image))), [height, width])
     image_std = utils.per_image_standardization(image_rgb)
     image_std = np.expand_dims(image_std, 0)
     with tf.Session() as sess:
@@ -70,7 +70,7 @@ def main():
         image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
         builder(image)
         global_step = tf.contrib.framework.get_or_create_global_step()
-        model_path = tf.train.latest_checkpoint(os.path.join(os.path.expanduser(os.path.expandvars(config.get(section, 'basedir'))), 'logdir'))
+        model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
         logger.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         logger.info('global_step=%d' % sess.run(global_step))

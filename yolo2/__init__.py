@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import yolo
-import yolo2.inference as inference
+from . import inference
 
 
 class Model(object):
@@ -96,10 +96,10 @@ class Builder(yolo.Builder):
         self.width = config.getint(section, 'width')
         self.height = config.getint(section, 'height')
         self.anchors = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(section, 'anchors'))), sep='\t').values
-        self.inference = getattr(inference, config.get(section, 'inference'))
+        self.func = getattr(inference, config.get(section, 'inference'))
     
     def __call__(self, data, training=False):
-        _, net = self.inference(data, len(self.names), len(self.anchors), training=training)
+        _, net = self.func(data, len(self.names), len(self.anchors), training=training)
         with tf.name_scope('model'):
             self.model = Model(net, len(self.names), self.anchors)
     

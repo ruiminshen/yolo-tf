@@ -67,3 +67,5 @@ def tiny(net, classes, boxes_per_cell, training=False):
     net = slim.layers.fully_connected(net, cell_width * cell_height * (classes + boxes_per_cell * 5), activation_fn=None, scope='%s/fc' % scope)
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
+
+TINY_DOWNSAMPLING = 2 ** 6

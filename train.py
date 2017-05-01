@@ -54,23 +54,22 @@ def log_hparam(builder, sess):
 
 
 def main(_):
-    section = config.get('config', 'model')
-    yolo = importlib.import_module(section)
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    logdir = os.path.join(basedir, 'logdir')
+    model = config.get('config', 'model')
+    logdir = utils.get_logdir(config)
     if args.delete:
         logger.warn('delete logging directory: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
-    cachedir = os.path.join(basedir, 'cache')
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    downsampling = config.getint(section, 'downsampling')
+    width = config.getint(model, 'width')
+    height = config.getint(model, 'height')
+    yolo = importlib.import_module(model)
+    downsampling = utils.get_downsampling(config)
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    cachedir = utils.get_cachedir(config)
     with tf.name_scope('batch'):
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):

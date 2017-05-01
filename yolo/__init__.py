@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import utils
-import yolo.inference as inference
+from . import inference
 
 
 def calc_cell_xy(cell_height, cell_width, dtype=np.float32):
@@ -105,10 +105,10 @@ class Builder(object):
         with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
             self.names = [line.strip() for line in f]
         self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
-        self.inference = getattr(inference, config.get(section, 'inference'))
+        self.func = getattr(inference, config.get(section, 'inference'))
     
     def __call__(self, data, training=False):
-        _scope, net = self.inference(data, len(self.names), self.boxes_per_cell, training=training)
+        _scope, net = self.func(data, len(self.names), self.boxes_per_cell, training=training)
         with tf.name_scope('model'):
             self.model = Model(net, _scope, len(self.names), self.boxes_per_cell)
     

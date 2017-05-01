@@ -16,8 +16,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
+import os
 import re
 import math
+import importlib
 import configparser
 import logging
 import getpass
@@ -42,6 +44,26 @@ def make_logger(level, fmt):
         handler.setFormatter(formatter)
         logger.addHandler(handler)
     return logger
+
+
+def get_cachedir(config):
+    model = config.get('config', 'model')
+    return os.path.join(os.path.expanduser(os.path.expandvars(config.get(model, 'basedir'))), 'cache')
+
+
+def get_logdir(config):
+    model = config.get('config', 'model')
+    return os.path.join(os.path.expanduser(os.path.expandvars(config.get(model, 'basedir'))), 'logdir', config.get(model, 'inference'))
+
+
+def get_inference(config):
+    model = config.get('config', 'model')
+    return getattr(importlib.import_module('.'.join([model, 'inference'])), config.get(model, 'inference'))
+
+
+def get_downsampling(config):
+    model = config.get('config', 'model')
+    return getattr(importlib.import_module('.'.join([model, 'inference'])), config.get(model, 'inference').upper() + '_DOWNSAMPLING')
 
 
 def decode_image_objects(example, width, height):
@@ -177,13 +199,13 @@ def per_image_standardization(image):
 
 
 def match_trainable_variables(pattern):
-    r = re.compile(pattern)
-    return [v for v in tf.trainable_variables() if r.match(v.op.name)]
+    prog = re.compile(pattern)
+    return [v for v in tf.trainable_variables() if prog.match(v.op.name)]
 
 
 def match_tensor(pattern):
-    r = re.compile(pattern)
-    return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and r.match(op.name)]
+    prog = re.compile(pattern)
+    return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and prog.match(op.name)]
 
 
 def tensorboard_histogram(pattern):

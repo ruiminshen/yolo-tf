@@ -71,19 +71,18 @@ class Drawer(object):
 
 
 def main():
-    section = config.get('config', 'model')
-    yolo = importlib.import_module(section)
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+    model = config.get('config', 'model')
+    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    downsampling = config.getint(section, 'downsampling')
+    width = config.getint(model, 'width')
+    height = config.getint(model, 'height')
+    yolo = importlib.import_module(model)
+    downsampling = utils.get_downsampling(config)
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
-    cachedir = os.path.join(basedir, 'cache')
+    cachedir = utils.get_cachedir(config)
     with tf.Session() as sess:
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         image_std = tf.image.per_image_standardization(image_rgb)
@@ -102,7 +101,7 @@ def main():
         feed_dict = dict([(ph, np.expand_dims(d, 0)) for ph, d in zip(ph_labels, _labels)])
         feed_dict[ph_image] = np.expand_dims(_image_std, 0)
         global_step = tf.contrib.framework.get_or_create_global_step()
-        model_path = tf.train.latest_checkpoint(os.path.join(os.path.expanduser(os.path.expandvars(config.get(section, 'basedir'))), 'logdir'))
+        model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
         logger.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         logger.info('global_step=%d' % sess.run(global_step))

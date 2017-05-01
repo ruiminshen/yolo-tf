@@ -55,8 +55,7 @@ def main():
     yolo = importlib.import_module(section)
     with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    cachedir = os.path.join(basedir, 'cache')
+    cachedir = utils.get_cachedir(config)
     os.makedirs(cachedir, exist_ok=True)
     for profile in args.profile:
         path = os.path.join(cachedir, profile + '.tfrecord')

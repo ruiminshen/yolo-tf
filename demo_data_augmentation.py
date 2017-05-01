@@ -27,13 +27,13 @@ import utils
 
 
 def main():
-    section = config.get('config', 'model')
-    basedir = os.path.expanduser(os.path.expandvars(config.get(section, 'basedir')))
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+    model = config.get('config', 'model')
+    basedir = os.path.expanduser(os.path.expandvars(config.get(model, 'basedir')))
+    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
         names = [line.strip() for line in f]
-    width = config.getint(section, 'width')
-    height = config.getint(section, 'height')
-    downsampling = config.getint(section, 'downsampling')
+    width = config.getint(model, 'width')
+    height = config.getint(model, 'height')
+    downsampling = utils.get_downsampling(config)
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
