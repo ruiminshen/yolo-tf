@@ -20,11 +20,11 @@ import argparse
 import configparser
 import importlib
 import numpy as np
-import scipy.misc
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from tensorflow.python.framework import ops
 import utils
 
 
@@ -62,23 +62,25 @@ def main():
     yolo = importlib.import_module(model)
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
-    image_rgb = scipy.misc.imresize(scipy.misc.imread(os.path.expanduser(os.path.expandvars(args.image))), [height, width])
-    image_std = utils.per_image_standardization(image_rgb)
-    image_std = np.expand_dims(image_std, 0)
+    path = os.path.expanduser(os.path.expandvars(args.image))
+    imagefile = tf.read_file(ops.convert_to_tensor(path))
+    image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
+    image_rgb = tf.image.resize_images(image_rgb, [height, width])
+    image_std = tf.image.per_image_standardization(image_rgb)
+    image_std = tf.expand_dims(image_std, 0)
     with tf.Session() as sess:
         builder = yolo.Builder(args, config)
-        image = tf.placeholder(dtype=tf.float32, shape=image_std.shape, name='image')
-        builder(image)
+        builder(image_std)
         global_step = tf.contrib.framework.get_or_create_global_step()
         model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
         logger.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         logger.info('global_step=%d' % sess.run(global_step))
+        conf, xy_min, xy_max = sess.run([builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max])
+        boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
         ax = fig.gca()
-        ax.imshow(image_rgb)
-        conf, xy_min, xy_max = sess.run([builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max], feed_dict={image: image_std})
-        boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+        ax.imshow(sess.run(tf.cast(image_rgb, tf.uint8)))
         cnt = 0
         for _conf, _xy_min, _xy_max in boxes:
             index = np.argmax(_conf)

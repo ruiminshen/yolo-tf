@@ -41,13 +41,11 @@ class Model(object):
         with tf.name_scope('labels'):
             end = cells * classes
             self.prob = tf.reshape(net[:, :end], [-1, cells, 1, classes], name='prob')
-            output = tf.reshape(net[:, end:], [-1, cells, boxes_per_cell, 5], name='output')
-            end = 1
-            self.iou = tf.identity(output[:, :, :, end], name='iou')
-            start = end
-            end += 2
-            self.offset_xy = tf.identity(output[:, :, :, start:end], name='offset_xy')
-            wh01_sqrt_base = tf.identity(output[:, :, :, end:], name='wh01_sqrt_base')
+            inputs_remaining = tf.reshape(net[:, end:], [-1, cells, boxes_per_cell, 5], name='inputs_remaining')
+            self.iou = tf.identity(inputs_remaining[:, :, :, 0], name='iou')
+            self.offset_xy = tf.identity(inputs_remaining[:, :, :, 1:3], name='offset_xy')
+            wh01_sqrt_base = tf.identity(inputs_remaining[:, :, :, 3:], name='wh01_sqrt_base')
+        with tf.name_scope('labels'):
             wh01 = tf.identity(wh01_sqrt_base ** 2, name='wh01')
             wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
             self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
@@ -64,6 +62,7 @@ class Model(object):
             self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         with tf.name_scope('regularizer'):
             self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name='regularizer')
+        self.inputs = net
         self.classes = classes
         self.boxes_per_cell = boxes_per_cell
 
@@ -102,15 +101,15 @@ class Builder(object):
         section = __name__.split('.')[-1]
         self.args = args
         self.config = config
-        with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+        with open(os.path.join(utils.get_cachedir(config), 'names'), 'r') as f:
             self.names = [line.strip() for line in f]
         self.boxes_per_cell = config.getint(section, 'boxes_per_cell')
         self.func = getattr(inference, config.get(section, 'inference'))
     
     def __call__(self, data, training=False):
-        _scope, net = self.func(data, len(self.names), self.boxes_per_cell, training=training)
+        _scope, self.output = self.func(data, len(self.names), self.boxes_per_cell, training=training)
         with tf.name_scope('model'):
-            self.model = Model(net, _scope, len(self.names), self.boxes_per_cell)
+            self.model = Model(self.output, _scope, len(self.names), self.boxes_per_cell)
     
     def loss(self, labels):
         section = __name__.split('.')[-1]

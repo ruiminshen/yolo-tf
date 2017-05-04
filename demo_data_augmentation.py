@@ -28,8 +28,8 @@ import utils
 
 def main():
     model = config.get('config', 'model')
-    basedir = os.path.expanduser(os.path.expandvars(config.get(model, 'basedir')))
-    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
+    cachedir = utils.get_cachedir(config)
+    with open(os.path.join(cachedir, 'names'), 'r') as f:
         names = [line.strip() for line in f]
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
@@ -38,7 +38,6 @@ def main():
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
-    cachedir = os.path.join(basedir, 'cache')
     with tf.Session() as sess:
         with tf.name_scope('batch'):
             image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)

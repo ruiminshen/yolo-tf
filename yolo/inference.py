@@ -18,12 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import inspect
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-
-
-def leaky_relu(inputs, alpha=.1):
-    with tf.name_scope('leaky_relu'):
-        data = tf.identity(inputs, name='data')
-        return tf.maximum(data, alpha * data)
+from yolo.function import leaky_relu
 
 
 def tiny(net, classes, boxes_per_cell, training=False):

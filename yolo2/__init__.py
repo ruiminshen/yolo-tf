@@ -20,6 +20,7 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import utils
 import yolo
 from . import inference
 
@@ -28,17 +29,14 @@ class Model(object):
     def __init__(self, net, classes, anchors):
         _, self.cell_height, self.cell_width, _ = net.get_shape().as_list()
         cells = self.cell_height * self.cell_width
-        output = tf.reshape(net, [-1, cells, len(anchors), 5 + classes], name='output')
+        inputs = tf.reshape(net, [-1, cells, len(anchors), 5 + classes], name='inputs')
+        with tf.name_scope('inputs_split'):
+            _inputs = tf.nn.sigmoid(inputs[:, :, :, :3])
+            self.iou = _inputs[:, :, :, 0]
+            self.offset_xy = tf.identity(_inputs[:, :, :, 1:3], name='offset_xy')
+            self.wh = tf.identity(tf.exp(inputs[:, :, :, 3:5]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name='wh')
+            self.prob = tf.nn.softmax(inputs[:, :, :, 5:])
         with tf.name_scope('labels'):
-            output_sigmoid = tf.nn.sigmoid(output[:, :, :, :3])
-            end = 1
-            self.iou = output_sigmoid[:, :, :, end]
-            start = end
-            end += 2
-            self.offset_xy = tf.identity(output_sigmoid[:, :, :, start:end], name='offset_xy')
-            start = end
-            end += 2
-            self.wh = tf.identity(tf.exp(output[:, :, :, start:end]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name='wh')
             self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
             _wh = self.wh / 2
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
@@ -46,13 +44,13 @@ class Model(object):
             self.wh01 = tf.identity(self.wh / np.reshape([self.cell_width, self.cell_height], [1, 1, 1, 2]), name='wh01')
             self.wh01_sqrt = tf.sqrt(self.wh01, name='wh01_sqrt')
             self.coords = tf.concat([self.offset_xy, self.wh01_sqrt], -1, name='coords')
-            self.prob = tf.nn.softmax(output[:, :, :, end:])
         with tf.name_scope('detection'):
             cell_xy = yolo.calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
             self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
             self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
+        self.inputs = net
         self.classes = classes
         self.anchors = anchors
 
@@ -91,7 +89,7 @@ class Builder(yolo.Builder):
         section = __name__.split('.')[-1]
         self.args = args
         self.config = config
-        with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
+        with open(os.path.join(utils.get_cachedir(config), 'names'), 'r') as f:
             self.names = [line.strip() for line in f]
         self.width = config.getint(section, 'width')
         self.height = config.getint(section, 'height')
@@ -99,9 +97,9 @@ class Builder(yolo.Builder):
         self.func = getattr(inference, config.get(section, 'inference'))
     
     def __call__(self, data, training=False):
-        _, net = self.func(data, len(self.names), len(self.anchors), training=training)
+        _, self.output = self.func(data, len(self.names), len(self.anchors), training=training)
         with tf.name_scope('model'):
-            self.model = Model(net, len(self.names), self.anchors)
+            self.model = Model(self.output, len(self.names), self.anchors)
     
     def loss(self, labels):
         section = __name__.split('.')[-1]

@@ -19,6 +19,8 @@ import os
 import argparse
 import configparser
 import importlib
+import shutil
+from PIL import Image
 import tqdm
 import numpy as np
 import tensorflow as tf
@@ -26,7 +28,7 @@ import voc
 import utils
 
 
-def cache_voc(writer, root, yolo, names, profile):
+def cache_voc(writer, root, names, profile, verify=False):
     path = os.path.join(root, 'ImageSets', 'Main', profile) + '.txt'
     if not os.path.exists(path):
         logger.warn(path + ' not exists')
@@ -36,14 +38,20 @@ def cache_voc(writer, root, yolo, names, profile):
     namedict = dict([(name, i) for i, name in enumerate(names)])
     for filename in tqdm.tqdm(filenames):
         imagename, imageshape, objects_class, objects_coord = voc.load_dataset(os.path.join(root, 'Annotations', filename + '.xml'), namedict)
-        image_height, image_width, _ = imageshape
-        objects_coord = [(xmin / image_width, ymin / image_height, xmax / image_width, ymax / image_height) for xmin, ymin, xmax, ymax in objects_coord]
+        objects_class = np.array(objects_class, dtype=np.int64)
+        objects_coord = np.array(objects_coord, dtype=np.float32)
         if len(objects_class) > 0:
             imagepath = os.path.join(root, 'JPEGImages', imagename)
+            if verify:
+                with Image.open(imagepath) as img:
+                    width, height = img.size
+                _height, _width, _ = imageshape
+                assert width == _width
+                assert height == _height
             example = tf.train.Example(features=tf.train.Features(feature={
                 'imagepath': tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(imagepath)])),
                 'imageshape': tf.train.Feature(int64_list=tf.train.Int64List(value=imageshape)),
-                'objects': tf.train.Feature(bytes_list=tf.train.BytesList(value=[np.array(objects_class, dtype=np.int64).tostring(), np.array(objects_coord, dtype=np.float32).tostring()])),
+                'objects': tf.train.Feature(bytes_list=tf.train.BytesList(value=[objects_class.tostring(), objects_coord.tostring()])),
             }))
             writer.write(example.SerializeToString())
         else:
@@ -51,12 +59,12 @@ def cache_voc(writer, root, yolo, names, profile):
 
 
 def main():
-    section = config.get('config', 'model')
-    yolo = importlib.import_module(section)
-    with open(os.path.expanduser(os.path.expandvars(config.get(section, 'names'))), 'r') as f:
-        names = [line.strip() for line in f]
     cachedir = utils.get_cachedir(config)
     os.makedirs(cachedir, exist_ok=True)
+    path = os.path.join(cachedir, 'names')
+    shutil.copyfile(os.path.expanduser(os.path.expandvars(config.get('cache', 'names'))), path)
+    with open(path, 'r') as f:
+        names = [line.strip() for line in f]
     for profile in args.profile:
         path = os.path.join(cachedir, profile + '.tfrecord')
         logger.info('write tfrecords file: ' + path)
@@ -65,8 +73,8 @@ def main():
                 roots = [os.path.expanduser(os.path.expandvars(line.strip())) for line in f]
             for root in roots:
                 logger.info('loading VOC %s dataset from %s' % (profile, root))
-                cache_voc(writer, root, yolo, names, profile)
-    logger.info('finished')
+                cache_voc(writer, root, names, profile, args.verify)
+    logger.info('%s data are saved into %s' % (str(args.profile), cachedir))
     
 
 
@@ -75,6 +83,7 @@ def make_args():
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val', 'test'])
+    parser.add_argument('-v', '--verify', action='store_true')
     return parser.parse_args()
 
 if __name__ == '__main__':

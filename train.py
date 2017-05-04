@@ -53,13 +53,21 @@ def log_hparam(builder, sess):
         pass
 
 
-def main(_):
+__optimizers__ = {
+    'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
+    'momentum': lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, 0.9),
+    'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate),
+}
+
+
+def main():
     model = config.get('config', 'model')
     logdir = utils.get_logdir(config)
     if args.delete:
         logger.warn('delete logging directory: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
-    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
+    cachedir = utils.get_cachedir(config)
+    with open(os.path.join(cachedir, 'names'), 'r') as f:
         names = [line.strip() for line in f]
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
@@ -69,7 +77,6 @@ def main(_):
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
-    cachedir = utils.get_cachedir(config)
     with tf.name_scope('batch'):
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
@@ -84,9 +91,9 @@ def main(_):
         summary_scalar(builder)
         tf.summary.scalar('loss', loss)
     tensorboard_histogram(config)
-    logger.info('learning rate=%f' % args.learning_rate)
+    logger.info('optimizer=%s, learning rate=%f' % (args.optimizer, args.learning_rate))
     with tf.name_scope('optimizer'):
-        optimizer = tf.train.RMSPropOptimizer(args.learning_rate)
+        optimizer = __optimizers__[args.optimizer](args.learning_rate)
         train_op = slim.learning.create_train_op(loss, optimizer)
     with tf.name_scope('train'):
         saver = tf.train.Saver()
@@ -110,6 +117,7 @@ def make_args():
     parser.add_argument('-s', '--steps', type=int, default=None, help='max number of steps')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
+    parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--summary_secs', default=5, type=int, help='seconds to save summaries')
@@ -124,7 +132,7 @@ if __name__ == '__main__':
     config.read(args.config)
     logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
     try:
-        tf.app.run()
+        main()
     except Exception as e:
         logger.exception('exception')
         raise e

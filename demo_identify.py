@@ -72,7 +72,8 @@ class Drawer(object):
 
 def main():
     model = config.get('config', 'model')
-    with open(os.path.expanduser(os.path.expandvars(config.get(model, 'names'))), 'r') as f:
+    cachedir = utils.get_cachedir(config)
+    with open(os.path.join(cachedir, 'names'), 'r') as f:
         names = [line.strip() for line in f]
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
@@ -82,9 +83,9 @@ def main():
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
     logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
-    cachedir = utils.get_cachedir(config)
     with tf.Session() as sess:
-        image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+        paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]
+        image_rgb, labels = utils.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
         image_std = tf.image.per_image_standardization(image_rgb)
         image_rgb = tf.cast(image_rgb, tf.uint8)
         ph_image = tf.placeholder(image_std.dtype, [1] + image_std.get_shape().as_list(), name='ph_image')

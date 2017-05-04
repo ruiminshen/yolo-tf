@@ -18,7 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import inspect
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from yolo.inference import leaky_relu
+from yolo.function import leaky_relu
+from yolo2.function import reorg
 
 
 def tiny(net, classes, num_anchors, training=False):
@@ -32,13 +33,13 @@ def tiny(net, classes, num_anchors, training=False):
             net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
             index += 1
             channels *= 2
-        net = slim.layers.conv2d(net, 512, scope='%s/conv%d' % (scope, index))
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
         net = slim.layers.max_pool2d(net, stride=1, scope='%s/max_pool%d' % (scope, index))
         index += 1
-        net = slim.layers.conv2d(net, 1024, scope='%s/conv%d' % (scope, index))
+        channels *= 2
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
         index += 1
-        net = slim.layers.conv2d(net, 1024, scope='%s/conv%d' % (scope, index))
-    index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
     net = slim.layers.conv2d(net, num_anchors * (5 + classes), kernel_size=[1, 1], activation_fn=None, scope='%s/conv' % scope)
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
@@ -49,23 +50,87 @@ TINY_DOWNSAMPLING = 2 ** 5
 def darknet(net, classes, num_anchors, training=False):
     scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
-    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], normalizer_fn=slim.batch_norm, normalizer_params={'scale': True}, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
+    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], normalizer_fn=slim.batch_norm, normalizer_params={'center': False, 'scale': True}, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0
         channels = 32
-        for _ in range(5):
+        for _ in range(2):
             net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
             net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
             index += 1
             channels *= 2
-        net = slim.layers.conv2d(net, 512, scope='%s/conv%d' % (scope, index))
-        net = slim.layers.max_pool2d(net, stride=1, scope='%s/max_pool%d' % (scope, index))
+        for _ in range(2):
+            net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+            index += 1
+            net = slim.layers.conv2d(net, channels / 2, kernel_size=[1, 1], scope='%s/conv%d' % (scope, index))
+            index += 1
+            net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+            net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
+            index += 1
+            channels *= 2
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
         index += 1
-        net = slim.layers.conv2d(net, 1024, scope='%s/conv%d' % (scope, index))
+        net = slim.layers.conv2d(net, channels / 2, kernel_size=[1, 1], scope='%s/conv%d' % (scope, index))
         index += 1
-        net = slim.layers.conv2d(net, 1024, scope='%s/conv%d' % (scope, index))
-    index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels / 2, kernel_size=[1, 1], scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        passthrough = tf.identity(net, name=scope + '/passthrough')
+        net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
+        index += 1
+        channels *= 2
+        # downsampling finished
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels / 2, kernel_size=[1, 1], scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels / 2, kernel_size=[1, 1], scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        with tf.name_scope(scope + '/reorg'):
+            _net = reorg(passthrough)
+        net = tf.concat([_net, net], 3, name='%s/concat%d' % (scope, index))
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
     net = slim.layers.conv2d(net, num_anchors * (5 + classes), kernel_size=[1, 1], activation_fn=None, scope='%s/conv' % scope)
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
 
 DARKNET_DOWNSAMPLING = 2 ** 5
+
+
+def darknet_tiny(net, classes, num_anchors, training=False):
+    def batch_norm(net):
+        net = slim.batch_norm(net, center=False, scale=True, epsilon=1e-5, is_training=training)
+        biases = slim.variable('biases', shape=[channels], initializer=tf.zeros_initializer())
+        net = tf.nn.bias_add(net, biases)
+        return net
+    scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
+    net = tf.identity(net, name='%s/input' % scope)
+    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
+        index = 0
+        channels = 16
+        for _ in range(5):
+            net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+            net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
+            index += 1
+            channels *= 2
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        net = slim.layers.max_pool2d(net, stride=1, scope='%s/max_pool%d' % (scope, index))
+        index += 1
+        channels *= 2
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+        index += 1
+        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
+    net = slim.layers.conv2d(net, num_anchors * (5 + classes), kernel_size=[1, 1], activation_fn=None, scope='%s/conv' % scope)
+    net = tf.identity(net, name='%s/output' % scope)
+    return scope, net
+
+DARKNET_TINY_DOWNSAMPLING = 2 ** 5
