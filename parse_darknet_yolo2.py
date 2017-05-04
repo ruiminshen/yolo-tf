@@ -24,6 +24,7 @@ import configparser
 import operator
 import itertools
 import importlib
+import struct
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -56,8 +57,6 @@ def transpose(sess, layer, num_anchors):
 
 
 def main():
-    param = np.fromfile(args.file, dtype=np.float32)[4:]
-    logger.info('%d parameters loaded' % len(param))
     model = config.get('config', 'model')
     cachedir = utils.get_cachedir(config)
     with open(os.path.join(cachedir, 'names'), 'r') as f:
@@ -77,27 +76,30 @@ def main():
         assert variables[0][0] == -1
         variables[0][0] = len(variables) - 1
         variables.insert(len(variables), variables.pop(0))
-        end = 0
         with tf.name_scope('assign'):
-            for i, layer in variables:
-                logger.info('processing layer %d' % i)
-                _start = end
-                for suffix in ['biases', 'beta', 'gamma', 'moving_mean', 'moving_variance', 'weights']:
-                    try:
-                        v = next(filter(lambda v: v.op.name.endswith(suffix), layer))
-                    except StopIteration:
-                        continue
-                    shape = v.get_shape().as_list()
-                    logger.info('%s: %s=%d' % (v.op.name, str(shape), np.multiply.reduce(shape)))
-                    begin = end
-                    end += np.multiply.reduce(shape)
-                    p = param[begin:end]
-                    if suffix == 'weights':
-                        ksize1, ksize2, channels_in, channels_out = shape
-                        p = p.reshape([channels_out, channels_in, ksize1, ksize2]) # DarkNet format
-                        p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
-                    sess.run(v.assign(p))
-                logger.info('%d parameters assigned' % (end - _start))
+            with open(os.path.expanduser(os.path.expandvars(args.file)), 'rb') as f:
+                major, minor, revision, seen = struct.unpack('4i', f.read(16))
+                logger.info('major=%d, minor=%d, revision=%d, seen=%d' % (major, minor, revision, seen))
+                for i, layer in variables:
+                    logger.info('processing layer %d' % i)
+                    total = 0
+                    for suffix in ['biases', 'beta', 'gamma', 'moving_mean', 'moving_variance', 'weights']:
+                        try:
+                            v = next(filter(lambda v: v.op.name.endswith(suffix), layer))
+                        except StopIteration:
+                            continue
+                        shape = v.get_shape().as_list()
+                        cnt = np.multiply.reduce(shape)
+                        total += cnt
+                        logger.info('%s: %s=%d' % (v.op.name, str(shape), cnt))
+                        p = struct.unpack('%df' % cnt, f.read(4 * cnt))
+                        if suffix == 'weights':
+                            ksize1, ksize2, channels_in, channels_out = shape
+                            p = np.reshape(p, [channels_out, channels_in, ksize1, ksize2]) # DarkNet format
+                            p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
+                        sess.run(v.assign(p))
+                    logger.info('%d parameters assigned' % total)
+                assert f.tell() == os.fstat(f.fileno()).st_size
             transpose(sess, layer, len(anchors))
         saver = tf.train.Saver()
         logdir = utils.get_logdir(config)
