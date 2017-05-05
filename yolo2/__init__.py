@@ -78,10 +78,10 @@ class Objectives(dict):
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         iou_diff = tf.identity(model.iou - iou, name='iou_diff')
         with tf.name_scope('objectives'):
-            self['prob'] = tf.nn.l2_loss(tf.expand_dims(self.mask, -1) * model.prob - self.prob, name='prob')
-            self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='mask_best')
-            self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='mask_normal')
+            self['iou_best'] = tf.nn.l2_loss(mask_best * iou_diff, name='iou_best')
+            self['iou_normal'] = tf.nn.l2_loss(mask_normal * iou_diff, name='iou_normal')
             self['coords'] = tf.nn.l2_loss(tf.expand_dims(mask_best, -1) * (model.coords - self.coords), name='coords')
+            self['prob'] = tf.nn.l2_loss(tf.expand_dims(self.mask, -1) * model.prob - self.prob, name='prob')
 
 
 class Builder(yolo.Builder):
@@ -98,12 +98,12 @@ class Builder(yolo.Builder):
     
     def __call__(self, data, training=False):
         _, self.output = self.func(data, len(self.names), len(self.anchors), training=training)
-        with tf.name_scope('model'):
+        with tf.name_scope(__name__.split('.')[-1]):
             self.model = Model(self.output, len(self.names), self.anchors)
     
     def loss(self, labels):
         section = __name__.split('.')[-1]
-        with tf.name_scope('objectives'):
+        with tf.name_scope('loss'):
             self.objectives = Objectives(self.model, *labels)
             with tf.variable_scope('hparam'):
                 self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])

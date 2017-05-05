@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from tensorflow.python.framework import ops
 import utils
 
 
@@ -57,20 +56,23 @@ def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
     return boxes
 
 
+def read_image(path, width, height, sess):
+    imagefile = tf.read_file(path)
+    image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
+    image_rgb = tf.image.resize_images(image_rgb, [height, width])
+    image_std = tf.image.per_image_standardization(image_rgb)
+    return sess.run(tf.cast(image_rgb, tf.uint8)), image_std
+
+
 def main():
     model = config.get('config', 'model')
     yolo = importlib.import_module(model)
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
-    path = os.path.expanduser(os.path.expandvars(args.image))
-    imagefile = tf.read_file(ops.convert_to_tensor(path))
-    image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
-    image_rgb = tf.image.resize_images(image_rgb, [height, width])
-    image_std = tf.image.per_image_standardization(image_rgb)
-    image_std = tf.expand_dims(image_std, 0)
     with tf.Session() as sess:
+        image_rgb, image_std = read_image(os.path.expanduser(os.path.expandvars(args.image)), width, height, sess)
         builder = yolo.Builder(args, config)
-        builder(image_std)
+        builder(tf.expand_dims(image_std, 0))
         global_step = tf.contrib.framework.get_or_create_global_step()
         model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
         logger.info('load ' + model_path)
@@ -104,7 +106,7 @@ def make_args():
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-t', '--threshold', type=float, default=0.1, help='detection threshold')
-    parser.add_argument('-nt', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
+    parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
     parser.add_argument('--color', default='red', help='bounding box and font color')
     parser.add_argument('--seed', type=int)
     return parser.parse_args()

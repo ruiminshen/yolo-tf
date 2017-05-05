@@ -21,36 +21,43 @@ import configparser
 import importlib
 import shutil
 import time
+import inspect
 import multiprocessing
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import utils
 
 
-def summary_scalar(builder):
-    for key in builder.objectives:
-        tf.summary.scalar(key, builder.objectives[key])
+def summary_scalar(config):
     try:
-        tf.summary.scalar('regularizer', builder.model.regularizer)
-    except AttributeError:
-        logger.warn('model regularizer not exists')
+        reduce = eval(config.get('summary', 'scalar_reduce'))
+        for t in utils.match_tensor(config.get('summary', 'scalar')):
+            name = t.op.name
+            if len(t.get_shape()) > 0:
+                t = reduce(t)
+            tf.summary.scalar(name, t)
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        tf.logging.warn(inspect.stack()[0][3] + ' disabled')
 
 
-def tensorboard_histogram(config):
+def summary_image(config):
     try:
-        for t in utils.match_tensor(config.get('tensorboard', 'histogram')):
+        for t in utils.match_tensor(config.get('summary', 'image')):
+            name = t.op.name
+            channels = t.get_shape()[-1].value
+            if channels not in (1, 3, 4):
+                t = tf.expand_dims(tf.reduce_sum(t, -1), -1)
+            tf.summary.image(name, t, config.getint('summary', 'image_max'))
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        tf.logging.warn(inspect.stack()[0][3] + ' disabled')
+
+
+def summary_histogram(config):
+    try:
+        for t in utils.match_tensor(config.get('summary', 'histogram')):
             tf.summary.histogram(t.op.name, t)
-    except configparser.NoOptionError:
-        logger.warn('no option histogram in section tensorboard')
-
-
-def log_hparam(builder, sess):
-    keys, values = zip(*builder.hparam.items())
-    logger.info(', '.join(['%s=%f' % (key, value) for key, value in zip(keys, sess.run(values))]))
-    try:
-        logger.info('hparam_regularizer=%f' % sess.run(builder.hparam_regularizer))
-    except AttributeError:
-        pass
+    except (configparser.NoSectionError, configparser.NoOptionError):
+        tf.logging.warn(inspect.stack()[0][3] + ' disabled')
 
 
 __optimizers__ = {
@@ -64,7 +71,7 @@ def main():
     model = config.get('config', 'model')
     logdir = utils.get_logdir(config)
     if args.delete:
-        logger.warn('delete logging directory: ' + logdir)
+        tf.logging.warn('delete logging directory: ' + logdir)
         shutil.rmtree(logdir, ignore_errors=True)
     cachedir = utils.get_cachedir(config)
     with open(os.path.join(cachedir, 'names'), 'r') as f:
@@ -76,7 +83,7 @@ def main():
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
-    logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.name_scope('batch'):
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
@@ -87,30 +94,35 @@ def main():
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
     loss = builder.loss(batch[1:])
-    with tf.name_scope('loss'):
-        summary_scalar(builder)
-        tf.summary.scalar('loss', loss)
-    tensorboard_histogram(config)
-    logger.info('optimizer=%s, learning rate=%f' % (args.optimizer, args.learning_rate))
+    global_step = tf.contrib.framework.get_or_create_global_step()
+    if args.finetune:
+        init_assign_op, init_feed_dict = slim.assign_from_checkpoint(os.path.expanduser(os.path.expandvars(args.finetune)), slim.get_variables_to_restore())
+        def init_fn(sess):
+            sess.run(init_assign_op, init_feed_dict)
+            tf.logging.info('fine-tuning from global_step=%d' % sess.run(global_step))
+    else:
+        init_fn = lambda sess: tf.logging.info('global_step=%d' % sess.run(global_step))
+    summary_scalar(config)
+    summary_image(config)
+    summary_histogram(config)
+    tf.logging.info('optimizer=%s, learning rate=%f' % (args.optimizer, args.learning_rate))
     with tf.name_scope('optimizer'):
         optimizer = __optimizers__[args.optimizer](args.learning_rate)
-        train_op = slim.learning.create_train_op(loss, optimizer)
-    with tf.name_scope('train'):
-        saver = tf.train.Saver()
-        summary_writer = tf.summary.FileWriter(os.path.join(logdir, args.logname))
-        logger.info('tensorboard --logdir ' + logdir)
-        slim.learning.train(train_op, logdir,
-            master=args.master, is_chief=(args.task == 0),
-            saver=saver, summary_writer=summary_writer,
-            number_of_steps=args.steps,
-            save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
-        )
+        train_op = slim.learning.create_train_op(loss, optimizer, global_step)
+    tf.logging.info('tensorboard --logdir ' + logdir)
+    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step,
+        summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
+        init_fn=init_fn,
+        number_of_steps=args.steps,
+        save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
+    )
 
 
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-l', '--level', default='info', help='logging level')
+    parser.add_argument('-f', '--finetune', help='initializing model from a .ckpt file')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-m', '--master', default='', help='master address')
     parser.add_argument('-t', '--task', type=int, default=0, help='task ID')
@@ -130,9 +142,5 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
-    try:
-        main()
-    except Exception as e:
-        logger.exception('exception')
-        raise e
+    tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    main()
