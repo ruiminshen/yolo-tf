@@ -19,6 +19,6 @@ import tensorflow as tf
 
 
 def leaky_relu(inputs, alpha=.1):
-    with tf.name_scope('leaky_relu'):
+    with tf.name_scope('leaky_relu') as name:
         data = tf.identity(inputs, name='data')
-        return tf.maximum(data, alpha * data)
+        return tf.maximum(data, alpha * data, name=name)

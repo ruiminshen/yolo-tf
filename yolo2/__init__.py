@@ -103,11 +103,11 @@ class Builder(yolo.Builder):
     
     def loss(self, labels):
         section = __name__.split('.')[-1]
-        with tf.name_scope('loss'):
+        with tf.name_scope('loss') as name:
             self.objectives = Objectives(self.model, *labels)
             with tf.variable_scope('hparam'):
                 self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
             with tf.name_scope('loss_objectives'):
                 loss_objectives = tf.reduce_sum([self.objectives[key] * self.hparam[key] for key in self.objectives], name='loss_objectives')
-            loss = tf.identity(loss_objectives, name='loss')
+            loss = tf.identity(loss_objectives, name=name)
         return loss

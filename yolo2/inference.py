@@ -95,7 +95,7 @@ def darknet(net, classes, num_anchors, training=False):
         index += 1
         net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
         index += 1
-        with tf.name_scope(scope + '/reorg'):
+        with tf.name_scope(scope):
             _net = reorg(passthrough)
         net = tf.concat([_net, net], 3, name='%s/concat%d' % (scope, index))
         net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))

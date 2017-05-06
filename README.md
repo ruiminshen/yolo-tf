@@ -6,7 +6,7 @@ Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup
 
 ## Configuration
 
-Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the parameter "logdir" for TensorBoard, and the model data files (.ckpt)), and the inference function ([model]/inference).
+Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference).
 
 ## Basic Usage
 

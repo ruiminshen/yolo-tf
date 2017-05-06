@@ -35,6 +35,7 @@ def summary_scalar(config):
             name = t.op.name
             if len(t.get_shape()) > 0:
                 t = reduce(t)
+                tf.logging.warn(name + ' is not a scalar tensor, reducing by ' + reduce.__name__)
             tf.summary.scalar(name, t)
     except (configparser.NoSectionError, configparser.NoOptionError):
         tf.logging.warn(inspect.stack()[0][3] + ' disabled')
@@ -62,9 +63,22 @@ def summary_histogram(config):
 
 __optimizers__ = {
     'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
+    'adadelta': lambda learning_rate: tf.train.AdadeltaOptimizer(learning_rate),
+    'adagrad': lambda learning_rate: tf.train.AdagradOptimizer(learning_rate),
     'momentum': lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, 0.9),
     'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate),
+    'ftrl': lambda learning_rate: tf.train.FtrlOptimizer(learning_rate),
+    'gd': lambda learning_rate: tf.train.GradientDescentOptimizer(learning_rate),
 }
+
+
+def get_optimizer(config, name):
+    section = 'optimizer_' + name
+    return {
+        'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
+        'momentum': lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, config.getfloat(section, 'momentum')),
+        'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate),
+    }[name]
 
 
 def main():
@@ -83,7 +97,7 @@ def main():
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
-    tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    tf.logging.warn('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.name_scope('batch'):
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
@@ -95,28 +109,34 @@ def main():
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
     if args.finetune:
-        init_assign_op, init_feed_dict = slim.assign_from_checkpoint(os.path.expanduser(os.path.expandvars(args.finetune)), slim.get_variables_to_restore())
+        path = os.path.expanduser(os.path.expandvars(args.finetune))
+        tf.logging.warn('fine-tuning from ' + path)
+        init_assign_op, init_feed_dict = slim.assign_from_checkpoint(path, slim.get_variables_to_restore())
         def init_fn(sess):
             sess.run(init_assign_op, init_feed_dict)
-            tf.logging.info('fine-tuning from global_step=%d' % sess.run(global_step))
+            tf.logging.warn('fine-tuning global_step=%d' % sess.run(global_step))
     else:
-        init_fn = lambda sess: tf.logging.info('global_step=%d' % sess.run(global_step))
+        init_fn = lambda sess: tf.logging.warn('global_step=%d' % sess.run(global_step))
     loss = builder.loss(batch[1:])
+    with tf.name_scope('optimizer'):
+        try:
+            decay_steps = config.getint('exponential_decay', 'decay_steps')
+            decay_rate = config.getfloat('exponential_decay', 'decay_rate')
+            staircase = config.getboolean('exponential_decay', 'staircase')
+            learning_rate = tf.train.exponential_decay(args.learning_rate, global_step, decay_steps, decay_rate, staircase=staircase)
+            tf.logging.warn('learning rate=%f with exponential decay (decay_steps=%d, decay_rate=%f, staircase=%d)' % (args.learning_rate, decay_steps, decay_rate, staircase))
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            learning_rate = args.learning_rate
+            tf.logging.warn('learning rate=%f' % args.learning_rate)
+        optimizer = get_optimizer(config, args.optimizer)(learning_rate)
+        tf.logging.warn('optimizer=' + args.optimizer)
+        train_op = slim.learning.create_train_op(loss, optimizer, global_step)
     summary_scalar(config)
     summary_image(config)
     summary_histogram(config)
-    tf.logging.info('optimizer=%s, learning rate=%f' % (args.optimizer, args.learning_rate))
-    with tf.name_scope('optimizer'):
-        try:
-            learning_rate = tf.train.exponential_decay(args.learning_rate, global_step, config.getint('exponential_decay', 'decay_steps'), config.getfloat('exponential_decay', 'decay_rate'), staircase=config.getboolean('exponential_decay', 'staircase'))
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            learning_rate = args.learning_rate
-        optimizer = __optimizers__[args.optimizer](learning_rate)
-        train_op = slim.learning.create_train_op(loss, optimizer, global_step)
-    tf.logging.info('tensorboard --logdir ' + logdir)
+    tf.logging.warn('tensorboard --logdir ' + logdir)
     slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps,
         summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
-        number_of_steps=args.steps,
         save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
     )
 
@@ -132,12 +152,12 @@ def make_args():
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
     parser.add_argument('-o', '--optimizer', default='adam')
+    parser.add_argument('-n', '--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name for TensorBoard')
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')
-    parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
-    parser.add_argument('--level', default='info', help='logging level')
+    parser.add_argument('--level', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -146,5 +166,5 @@ if __name__ == '__main__':
     assert os.path.exists(args.config)
     config.read(args.config)
     if args.level:
-        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+        tf.logging.set_verbosity(args.level.upper())
     main()

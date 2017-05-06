@@ -60,8 +60,8 @@ class Model(object):
             self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
             self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
             self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
-        with tf.name_scope('regularizer'):
-            self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name='regularizer')
+        with tf.name_scope('regularizer') as name:
+            self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name=name)
         self.inputs = net
         self.classes = classes
         self.boxes_per_cell = boxes_per_cell
@@ -113,7 +113,7 @@ class Builder(object):
     
     def loss(self, labels):
         section = __name__.split('.')[-1]
-        with tf.name_scope('loss'):
+        with tf.name_scope('loss') as name:
             self.objectives = Objectives(self.model, *labels)
             with tf.variable_scope('hparam'):
                 self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
@@ -121,5 +121,5 @@ class Builder(object):
             with tf.name_scope('loss_objectives'):
                 loss_objectives = tf.reduce_sum([self.objectives[key] * self.hparam[key] for key in self.objectives], name='loss_objectives')
             loss_regularizer = tf.identity(self.hparam_regularizer * self.model.regularizer, name='loss_regularizer')
-            loss = tf.identity(loss_objectives + loss_regularizer, name='loss')
+            loss = tf.identity(loss_objectives + loss_regularizer, name=name)
         return loss
