@@ -82,7 +82,7 @@ def main():
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
-    logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]
         image_rgb, labels = utils.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
@@ -103,9 +103,9 @@ def main():
         feed_dict[ph_image] = np.expand_dims(_image_std, 0)
         global_step = tf.contrib.framework.get_or_create_global_step()
         model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
-        logger.info('load ' + model_path)
+        tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
-        logger.info('global_step=%d' % sess.run(global_step))
+        tf.logging.info('global_step=%d' % sess.run(global_step))
         _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, _image_rgb, _labels, builder.model, loss, feed_dict)
         plt.show()
 
@@ -113,9 +113,8 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
-    parser.add_argument('--seed', type=int)
+    parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -123,9 +122,6 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
-    try:
-        main()
-    except Exception as e:
-        logger.exception('exception')
-        raise e
+    if args.level:
+        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    main()

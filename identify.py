@@ -75,9 +75,9 @@ def main():
         builder(tf.expand_dims(image_std, 0))
         global_step = tf.contrib.framework.get_or_create_global_step()
         model_path = tf.train.latest_checkpoint(utils.get_logdir(config))
-        logger.info('load ' + model_path)
+        tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
-        logger.info('global_step=%d' % sess.run(global_step))
+        tf.logging.info('global_step=%d' % sess.run(global_step))
         conf, xy_min, xy_max = sess.run([builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max])
         boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
@@ -104,11 +104,10 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('image', help='input image')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-t', '--threshold', type=float, default=0.1, help='detection threshold')
     parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
     parser.add_argument('--color', default='red', help='bounding box and font color')
-    parser.add_argument('--seed', type=int)
+    parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -116,9 +115,6 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
-    try:
-        main()
-    except Exception as e:
-        logger.exception('exception')
-        raise e
+    if args.level:
+        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    main()

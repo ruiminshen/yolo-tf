@@ -15,34 +15,15 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import sys
 import os
 import re
 import importlib
 import configparser
-import logging
-import getpass
 import inspect
 import numpy as np
 import matplotlib.patches as patches
 import tensorflow as tf
 import sympy
-
-
-def make_logger(level, fmt):
-    logger = logging.getLogger(getpass.getuser())
-    logger.setLevel(level)
-    formatter = logging.Formatter(fmt)
-    settings = [
-        (logging.INFO, sys.stdout),
-        (logging.WARN, sys.stderr),
-    ]
-    for level, out in settings:
-        handler = logging.StreamHandler(out)
-        handler.setLevel(level)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
 
 
 def get_cachedir(config):

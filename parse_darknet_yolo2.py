@@ -23,7 +23,6 @@ import argparse
 import configparser
 import operator
 import itertools
-import importlib
 import struct
 import numpy as np
 import pandas as pd
@@ -79,9 +78,9 @@ def main():
         with tf.name_scope('assign'):
             with open(os.path.expanduser(os.path.expandvars(args.file)), 'rb') as f:
                 major, minor, revision, seen = struct.unpack('4i', f.read(16))
-                logger.info('major=%d, minor=%d, revision=%d, seen=%d' % (major, minor, revision, seen))
+                tf.logging.info('major=%d, minor=%d, revision=%d, seen=%d' % (major, minor, revision, seen))
                 for i, layer in variables:
-                    logger.info('processing layer %d' % i)
+                    tf.logging.info('processing layer %d' % i)
                     total = 0
                     for suffix in ['biases', 'beta', 'gamma', 'moving_mean', 'moving_variance', 'weights']:
                         try:
@@ -91,40 +90,40 @@ def main():
                         shape = v.get_shape().as_list()
                         cnt = np.multiply.reduce(shape)
                         total += cnt
-                        logger.info('%s: %s=%d' % (v.op.name, str(shape), cnt))
+                        tf.logging.info('%s: %s=%d' % (v.op.name, str(shape), cnt))
                         p = struct.unpack('%df' % cnt, f.read(4 * cnt))
                         if suffix == 'weights':
                             ksize1, ksize2, channels_in, channels_out = shape
                             p = np.reshape(p, [channels_out, channels_in, ksize1, ksize2]) # DarkNet format
                             p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
                         sess.run(v.assign(p))
-                    logger.info('%d parameters assigned' % total)
+                    tf.logging.info('%d parameters assigned' % total)
                 assert f.tell() == os.fstat(f.fileno()).st_size
             transpose(sess, layer, len(anchors))
         saver = tf.train.Saver()
         logdir = utils.get_logdir(config)
         if args.delete:
-            logger.warn('delete logging directory: ' + logdir)
+            tf.logging.warn('delete logging directory: ' + logdir)
             shutil.rmtree(logdir, ignore_errors=True)
         os.makedirs(logdir, exist_ok=True)
         model_path = os.path.join(logdir, 'model.ckpt')
-        logger.info('save model into ' + model_path)
+        tf.logging.info('save model into ' + model_path)
         saver.save(sess, model_path)
         if args.summary:
             path = os.path.join(logdir, args.logname)
             summary_writer = tf.summary.FileWriter(path)
             summary_writer.add_graph(sess.graph)
-            logger.info('tensorboard --logdir ' + logdir)
+            tf.logging.info('tensorboard --logdir ' + logdir)
 
 
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('file', help='DarkNet .weights file')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-s', '--summary', action='store_true')
     parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
+    parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -132,9 +131,6 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
-    try:
-        main()
-    except Exception as e:
-        logger.exception('exception')
-        raise e
+    if args.level:
+        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    main()

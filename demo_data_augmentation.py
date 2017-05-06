@@ -18,7 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import argparse
 import configparser
-import importlib
 import multiprocessing
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,7 +36,7 @@ def main():
     assert width % downsampling == 0
     assert height % downsampling == 0
     cell_width, cell_height = width // downsampling, height // downsampling
-    logger.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         with tf.name_scope('batch'):
             image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
@@ -68,9 +67,9 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
+    parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -78,9 +77,6 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    logger = utils.make_logger(importlib.import_module('logging').__dict__[args.level.strip().upper()], config.get('logging', 'format'))
-    try:
-        main()
-    except Exception as e:
-        logger.exception('exception')
-        raise e
+    if args.level:
+        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    main()

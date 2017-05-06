@@ -91,10 +91,9 @@ def main():
         batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size,
             capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count()
         )
+    global_step = tf.contrib.framework.get_or_create_global_step()
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
-    loss = builder.loss(batch[1:])
-    global_step = tf.contrib.framework.get_or_create_global_step()
     if args.finetune:
         init_assign_op, init_feed_dict = slim.assign_from_checkpoint(os.path.expanduser(os.path.expandvars(args.finetune)), slim.get_variables_to_restore())
         def init_fn(sess):
@@ -102,17 +101,21 @@ def main():
             tf.logging.info('fine-tuning from global_step=%d' % sess.run(global_step))
     else:
         init_fn = lambda sess: tf.logging.info('global_step=%d' % sess.run(global_step))
+    loss = builder.loss(batch[1:])
     summary_scalar(config)
     summary_image(config)
     summary_histogram(config)
     tf.logging.info('optimizer=%s, learning rate=%f' % (args.optimizer, args.learning_rate))
     with tf.name_scope('optimizer'):
-        optimizer = __optimizers__[args.optimizer](args.learning_rate)
+        try:
+            learning_rate = tf.train.exponential_decay(args.learning_rate, global_step, config.getint('exponential_decay', 'decay_steps'), config.getfloat('exponential_decay', 'decay_rate'), staircase=config.getboolean('exponential_decay', 'staircase'))
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            learning_rate = args.learning_rate
+        optimizer = __optimizers__[args.optimizer](learning_rate)
         train_op = slim.learning.create_train_op(loss, optimizer, global_step)
     tf.logging.info('tensorboard --logdir ' + logdir)
-    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step,
+    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps,
         summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
-        init_fn=init_fn,
         number_of_steps=args.steps,
         save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
     )
@@ -121,7 +124,6 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-l', '--level', default='info', help='logging level')
     parser.add_argument('-f', '--finetune', help='initializing model from a .ckpt file')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-m', '--master', default='', help='master address')
@@ -132,9 +134,10 @@ def make_args():
     parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--summary_secs', default=5, type=int, help='seconds to save summaries')
+    parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')
     parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
+    parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -142,5 +145,6 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     assert os.path.exists(args.config)
     config.read(args.config)
-    tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+    if args.level:
+        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
     main()
