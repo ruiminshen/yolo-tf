@@ -82,7 +82,7 @@ def main():
         boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
         ax = fig.gca()
-        ax.imshow(sess.run(tf.cast(image_rgb, tf.uint8)))
+        ax.imshow(image_rgb)
         cnt = 0
         for _conf, _xy_min, _xy_max in boxes:
             index = np.argmax(_conf)
