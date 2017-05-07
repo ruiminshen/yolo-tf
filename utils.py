@@ -33,9 +33,11 @@ def get_cachedir(config):
 
 
 def get_logdir(config):
-    model = config.get('config', 'model')
     basedir = os.path.expanduser(os.path.expandvars(config.get('config', 'basedir')))
-    return os.path.join(basedir, model, config.get(model, 'inference'))
+    model = config.get('config', 'model')
+    inference = config.get(model, 'inference')
+    name = os.path.basename(config.get('cache', 'names'))
+    return os.path.join(basedir, model, inference, name)
 
 
 def get_inference(config):
