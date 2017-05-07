@@ -62,7 +62,7 @@ def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
     return boxes
 
 
-def read_image(path, width, height):
+def preprocess(path, width, height):
     imagefile = tf.read_file(path)
     image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
     image_rgb = tf.image.resize_images(image_rgb, [height, width])
