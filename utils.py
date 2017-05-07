@@ -73,14 +73,15 @@ def decode_image_objects(paths):
 def resize_image_objects(image, imageshape, objects_coord, width, height):
     with tf.name_scope(inspect.stack()[0][3]):
         image = tf.image.resize_images(image, [height, width])
-        factor = tf.cast(imageshape[1::-1], objects_coord.dtype)
-        objects_coord = objects_coord / tf.tile(factor, [2])
+        factor = tf.cast([width, height] / imageshape[1::-1], objects_coord.dtype)
+        objects_coord = objects_coord * tf.tile(factor, [2])
     return image, objects_coord
 
 
-def data_augmentation(image, objects_coord, config):
+def data_augmentation(image, objects_coord, width, height, config):
     section = inspect.stack()[0][3]
     _image = image
+    _objects_coord = tf.cast(objects_coord, tf.int32)
     with tf.name_scope(section):
         if config.getboolean(section, 'random_brightness'):
             _image = tf.image.random_brightness(_image, max_delta=63)
@@ -90,17 +91,30 @@ def data_augmentation(image, objects_coord, config):
             _image = tf.image.random_hue(_image, max_delta=0.032)
         if config.getboolean(section, 'random_contrast'):
             _image = tf.image.random_contrast(_image, lower=0.5, upper=1.5)
-        if config.getboolean(section, 'noise'):
-            _image += tf.identity(tf.random_normal(_image.get_shape(), stddev=15) + 127, name='noise')
         grayscale_probability = config.getfloat(section, 'grayscale_probability')
         if grayscale_probability > 0:
             with tf.name_scope('random_grayscale'):
-                image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
+                _image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
+        if config.getboolean(section, 'random_move'):
+            with tf.name_scope('random_move'):
+                xy_min = tf.reduce_min(objects_coord[:, :2], 0)
+                xy_max = tf.reduce_max(objects_coord[:, 2:], 0)
+                a = xy_max - [width, height]
+                b = xy_min
+                xy_move = a + tf.random_uniform([2]) * (b - a)
+                _xy_move = tf.cast(xy_move, tf.int32)
+                _xy_min = tf.maximum(_xy_move, [0, 0])
+                _xy_max = tf.minimum([width, height] + _xy_move, [width, height])
+                _wh = _xy_max - _xy_min
+                _image = tf.image.crop_to_bounding_box(_image, _xy_min[1], _xy_min[0], _wh[1], _wh[0])
+                _xy_move = tf.maximum(-_xy_move, tf.zeros([2], dtype=tf.int32))
+                _image = tf.image.pad_to_bounding_box(_image, _xy_move[1], _xy_move[0], height, width)
+                objects_coord = objects_coord - tf.tile(xy_move, [2])
         _image = tf.clip_by_value(_image, 0, 255)
         with tf.name_scope('random_enable'):
             image = tf.cond(tf.random_uniform([], 0, 1) < config.getfloat(section, 'enable_probability'), lambda: _image, lambda: image)
     return image, objects_coord
-        
+
 
 def transform_labels(objects_class, objects_coord, classes, cell_width, cell_height, dtype=np.float32):
     cells = cell_height * cell_width
@@ -157,7 +171,8 @@ def load_image_labels(paths, classes, width, height, cell_width, cell_height, co
         image_rgb, imageshape, objects_class, objects_coord = decode_image_objects(paths)
         image_rgb, objects_coord = resize_image_objects(image_rgb, imageshape, objects_coord, width, height)
         if config.getboolean('data_augmentation', 'enable'):
-            image_rgb, objects_coord = data_augmentation(image_rgb, objects_coord, config)
+            image_rgb, objects_coord = data_augmentation(image_rgb, objects_coord, width, height, config)
+        objects_coord = objects_coord / tf.cast([width, height, width, height], objects_coord.dtype)
         with tf.device('/cpu:0'):
             labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
     return image_rgb, labels
