@@ -22,10 +22,15 @@ from yolo.function import leaky_relu
 from yolo2.function import reorg
 
 
-def tiny(net, classes, num_anchors, training=False):
+def tiny(net, classes, num_anchors, training=False, center=True):
+    def batch_norm(net):
+        net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
+        if not center:
+            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
+        return net
     scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
-    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=slim.batch_norm, normalizer_params={'scale': True}, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
+    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0
         channels = 16
         for _ in range(5):
@@ -47,7 +52,13 @@ def tiny(net, classes, num_anchors, training=False):
 TINY_DOWNSAMPLING = (2 ** 5, 2 ** 5)
 
 
-def darknet(net, classes, num_anchors, training=False, center=False):
+def _tiny(net, classes, num_anchors, training=False):
+    return tiny(net, classes, num_anchors, training, False)
+
+_TINY_DOWNSAMPLING = (2 ** 5, 2 ** 5)
+
+
+def darknet(net, classes, num_anchors, training=False, center=True):
     def batch_norm(net):
         net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
         if not center:
@@ -111,31 +122,7 @@ def darknet(net, classes, num_anchors, training=False, center=False):
 DARKNET_DOWNSAMPLING = (2 ** 5, 2 ** 5)
 
 
-def darknet_tiny(net, classes, num_anchors, training=False, center=False):
-    def batch_norm(net):
-        net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
-        if not center:
-            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
-        return net
-    scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
-    net = tf.identity(net, name='%s/input' % scope)
-    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
-        index = 0
-        channels = 16
-        for _ in range(5):
-            net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
-            net = slim.layers.max_pool2d(net, scope='%s/max_pool%d' % (scope, index))
-            index += 1
-            channels *= 2
-        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
-        net = slim.layers.max_pool2d(net, stride=1, scope='%s/max_pool%d' % (scope, index))
-        index += 1
-        channels *= 2
-        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
-        index += 1
-        net = slim.layers.conv2d(net, channels, scope='%s/conv%d' % (scope, index))
-    net = slim.layers.conv2d(net, num_anchors * (5 + classes), kernel_size=[1, 1], activation_fn=None, scope='%s/conv' % scope)
-    net = tf.identity(net, name='%s/output' % scope)
-    return scope, net
+def _darknet(net, classes, num_anchors, training=False):
+    return darknet(net, classes, num_anchors, training, False)
 
-DARKNET_TINY_DOWNSAMPLING = (2 ** 5, 2 ** 5)
+_DARKNET_DOWNSAMPLING = (2 ** 5, 2 ** 5)
