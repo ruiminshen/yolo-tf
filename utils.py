@@ -50,6 +50,13 @@ def get_downsampling(config):
     return getattr(importlib.import_module('.'.join([model, 'inference'])), config.get(model, 'inference').upper() + '_DOWNSAMPLING')
 
 
+def calc_cell_width_height(config, width, height):
+    downsampling_width, downsampling_height = get_downsampling(config)
+    assert width % downsampling_width == 0
+    assert height % downsampling_height == 0
+    return width // downsampling_width, height // downsampling_height
+
+
 def decode_image_objects(paths):
     with tf.name_scope(inspect.stack()[0][3]):
         with tf.name_scope('parse_example'):

@@ -78,10 +78,7 @@ def main():
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
     yolo = importlib.import_module(model)
-    downsampling = utils.get_downsampling(config)
-    assert width % downsampling == 0
-    assert height % downsampling == 0
-    cell_width, cell_height = width // downsampling, height // downsampling
+    cell_width, cell_height = utils.calc_cell_width_height(config, width, height)
     tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]

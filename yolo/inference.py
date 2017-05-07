@@ -63,4 +63,4 @@ def tiny(net, classes, boxes_per_cell, training=False):
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
 
-TINY_DOWNSAMPLING = 2 ** 6
+TINY_DOWNSAMPLING = (2 ** 6, 2 ** 6)

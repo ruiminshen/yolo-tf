@@ -60,12 +60,11 @@ def main():
     cachedir = utils.get_cachedir(config)
     with open(os.path.join(cachedir, 'names'), 'r') as f:
         names = [line.strip() for line in f]
-    downsampling = utils.get_downsampling(config)
-    resolution = 13 * downsampling
+    width, height = np.array(utils.get_downsampling(config)) * 13
     anchors = pd.read_csv(os.path.expanduser(os.path.expandvars(config.get(model, 'anchors'))), sep='\t').values
     func = getattr(inference, config.get(model, 'inference'))
     with tf.Session() as sess:
-        image = tf.placeholder(tf.float32, [1, resolution, resolution, 3])
+        image = tf.placeholder(tf.float32, [1, height, width, 3], name='image')
         func(image, len(names), len(anchors))
         tf.contrib.framework.get_or_create_global_step()
         tf.global_variables_initializer().run()

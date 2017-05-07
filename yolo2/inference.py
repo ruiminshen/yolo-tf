@@ -44,13 +44,18 @@ def tiny(net, classes, num_anchors, training=False):
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
 
-TINY_DOWNSAMPLING = 2 ** 5
+TINY_DOWNSAMPLING = (2 ** 5, 2 ** 5)
 
 
-def darknet(net, classes, num_anchors, training=False):
+def darknet(net, classes, num_anchors, training=False, center=False):
+    def batch_norm(net):
+        net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
+        if not center:
+            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
+        return net
     scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
-    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=slim.batch_norm, normalizer_params={'scale': True}, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
+    with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0
         channels = 32
         for _ in range(2):
@@ -103,14 +108,14 @@ def darknet(net, classes, num_anchors, training=False):
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
 
-DARKNET_DOWNSAMPLING = 2 ** 5
+DARKNET_DOWNSAMPLING = (2 ** 5, 2 ** 5)
 
 
-def darknet_tiny(net, classes, num_anchors, training=False):
+def darknet_tiny(net, classes, num_anchors, training=False, center=False):
     def batch_norm(net):
-        net = slim.batch_norm(net, center=False, scale=True, epsilon=1e-5, is_training=training)
-        biases = slim.variable('biases', shape=[channels], initializer=tf.zeros_initializer())
-        net = tf.nn.bias_add(net, biases)
+        net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
+        if not center:
+            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
         return net
     scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
@@ -133,4 +138,4 @@ def darknet_tiny(net, classes, num_anchors, training=False):
     net = tf.identity(net, name='%s/output' % scope)
     return scope, net
 
-DARKNET_TINY_DOWNSAMPLING = 2 ** 5
+DARKNET_TINY_DOWNSAMPLING = (2 ** 5, 2 ** 5)
