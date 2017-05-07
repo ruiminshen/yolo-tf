@@ -98,7 +98,7 @@ def main():
                             p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
                         sess.run(v.assign(p))
                     tf.logging.info('%d parameters assigned' % total)
-                assert f.tell() == os.fstat(f.fileno()).st_size
+                remaining = os.fstat(f.fileno()).st_size - f.tell()
             transpose(sess, layer, len(anchors))
         saver = tf.train.Saver()
         logdir = utils.get_logdir(config)
@@ -114,6 +114,8 @@ def main():
             summary_writer = tf.summary.FileWriter(path)
             summary_writer.add_graph(sess.graph)
             tf.logging.info('tensorboard --logdir ' + logdir)
+    if remaining > 0:
+        tf.logging.warn('%d bytes remaining' % remaining)
 
 
 def make_args():
