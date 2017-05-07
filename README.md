@@ -16,7 +16,7 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 - Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the optimizer and the maximum number of steps.
 
-- Run "identify.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
+- Run "detect.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
 
 ## License
 
