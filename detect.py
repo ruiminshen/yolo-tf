@@ -19,11 +19,13 @@ import os
 import argparse
 import configparser
 import importlib
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from tensorflow.python.framework import ops
 import utils
 
 
@@ -60,12 +62,20 @@ def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
     return boxes
 
 
-def read_image(path, width, height, sess):
+def read_image(path, width, height):
     imagefile = tf.read_file(path)
     image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
     image_rgb = tf.image.resize_images(image_rgb, [height, width])
     image_std = tf.image.per_image_standardization(image_rgb)
-    return sess.run(tf.cast(image_rgb, tf.uint8)), image_std
+    return tf.cast(image_rgb, tf.uint8), image_std
+
+
+def preprocess_darknet(path, width, height):
+    _image = cv2.imread(path)
+    _image = cv2.cvtColor(_image, cv2.COLOR_BGR2RGB)
+    _image = cv2.resize(_image, (width, height))
+    image = _image / 255.
+    return ops.convert_to_tensor(_image), ops.convert_to_tensor(image.astype(np.float32))
 
 
 def main():
@@ -74,7 +84,7 @@ def main():
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
     with tf.Session() as sess:
-        image_rgb, image_std = read_image(os.path.expanduser(os.path.expandvars(args.image)), width, height, sess)
+        image_rgb, image_std = eval(args.preprocess)(os.path.expanduser(os.path.expandvars(args.image)), width, height)
         builder = yolo.Builder(args, config)
         builder(tf.expand_dims(image_std, 0))
         global_step = tf.contrib.framework.get_or_create_global_step()
@@ -87,7 +97,7 @@ def main():
         boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
         ax = fig.gca()
-        ax.imshow(image_rgb)
+        ax.imshow(sess.run(image_rgb))
         cnt = 0
         for _conf, _xy_min, _xy_max in boxes:
             index = np.argmax(_conf)
@@ -109,7 +119,8 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('image', help='input image')
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
-    parser.add_argument('-t', '--threshold', type=float, default=0.1, help='detection threshold')
+    parser.add_argument('-p', '--preprocess', default='preprocess', help='the preprocess function')
+    parser.add_argument('-t', '--threshold', type=float, default=0.3, help='detection threshold')
     parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
     parser.add_argument('--color', default='red', help='bounding box and font color')
     parser.add_argument('--level', default='info', help='logging level')
