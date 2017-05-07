@@ -61,6 +61,12 @@ def summary_histogram(config):
         tf.logging.warn(inspect.stack()[0][3] + ' disabled')
 
 
+def summary(config):
+    summary_scalar(config)
+    summary_image(config)
+    summary_histogram(config)
+
+
 __optimizers__ = {
     'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
     'adadelta': lambda learning_rate: tf.train.AdadeltaOptimizer(learning_rate),
@@ -92,31 +98,21 @@ def main():
         names = [line.strip() for line in f]
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
-    yolo = importlib.import_module(model)
-    downsampling = utils.get_downsampling(config)
-    assert width % downsampling == 0
-    assert height % downsampling == 0
-    cell_width, cell_height = width // downsampling, height // downsampling
+    cell_width, cell_height = utils.calc_cell_width_height(config, width, height)
     tf.logging.warn('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
+    yolo = importlib.import_module(model)
     with tf.name_scope('batch'):
         image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
             image_std = tf.image.per_image_standardization(image_rgb)
         batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size,
-            capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count()
+            capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'),
+            num_threads=multiprocessing.cpu_count()
         )
     global_step = tf.contrib.framework.get_or_create_global_step()
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
-    if args.finetune:
-        path = os.path.expanduser(os.path.expandvars(args.finetune))
-        tf.logging.warn('fine-tuning from ' + path)
-        init_assign_op, init_feed_dict = slim.assign_from_checkpoint(path, slim.get_variables_to_restore())
-        def init_fn(sess):
-            sess.run(init_assign_op, init_feed_dict)
-            tf.logging.warn('fine-tuning global_step=%d' % sess.run(global_step))
-    else:
-        init_fn = lambda sess: tf.logging.warn('global_step=%d' % sess.run(global_step))
+    variables_to_restore = slim.get_variables_to_restore()
     loss = builder.loss(batch[1:])
     with tf.name_scope('optimizer'):
         try:
@@ -124,16 +120,23 @@ def main():
             decay_rate = config.getfloat('exponential_decay', 'decay_rate')
             staircase = config.getboolean('exponential_decay', 'staircase')
             learning_rate = tf.train.exponential_decay(args.learning_rate, global_step, decay_steps, decay_rate, staircase=staircase)
-            tf.logging.warn('learning rate=%f with exponential decay (decay_steps=%d, decay_rate=%f, staircase=%d)' % (args.learning_rate, decay_steps, decay_rate, staircase))
+            tf.logging.warn('using a learning rate start from %f with exponential decay (decay_steps=%d, decay_rate=%f, staircase=%d)' % (args.learning_rate, decay_steps, decay_rate, staircase))
         except (configparser.NoSectionError, configparser.NoOptionError):
             learning_rate = args.learning_rate
-            tf.logging.warn('learning rate=%f' % args.learning_rate)
+            tf.logging.warn('using a staionary learning rate %f' % args.learning_rate)
         optimizer = get_optimizer(config, args.optimizer)(learning_rate)
         tf.logging.warn('optimizer=' + args.optimizer)
         train_op = slim.learning.create_train_op(loss, optimizer, global_step)
-    summary_scalar(config)
-    summary_image(config)
-    summary_histogram(config)
+    if args.finetune:
+        path = os.path.expanduser(os.path.expandvars(args.finetune))
+        tf.logging.warn('fine-tuning from ' + path)
+        init_assign_op, init_feed_dict = slim.assign_from_checkpoint(path, variables_to_restore)
+        def init_fn(sess):
+            sess.run(init_assign_op, init_feed_dict)
+            tf.logging.warn('fine-tuning from global_step=%d, learning_rate=%f' % sess.run([global_step, learning_rate]))
+    else:
+        init_fn = lambda sess: tf.logging.warn('global_step=%d, learning_rate=%f' % sess.run([global_step, learning_rate]))
+    summary(config)
     tf.logging.warn('tensorboard --logdir ' + logdir)
     slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps,
         summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
@@ -150,7 +153,7 @@ def make_args():
     parser.add_argument('-t', '--task', type=int, default=0, help='task ID')
     parser.add_argument('-s', '--steps', type=int, default=None, help='max number of steps')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
-    parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
+    parser.add_argument('-b', '--batch_size', default=8, type=int, help='batch size')
     parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-n', '--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name for TensorBoard')
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
