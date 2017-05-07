@@ -28,6 +28,10 @@ import utils
 
 
 def iou(xy_min1, xy_max1, xy_min2, xy_max2):
+    assert(not np.isnan(xy_min1).any())
+    assert(not np.isnan(xy_max1).any())
+    assert(not np.isnan(xy_min2).any())
+    assert(not np.isnan(xy_max2).any())
     assert np.all(xy_min1 <= xy_max1)
     assert np.all(xy_min2 <= xy_max2)
     areas1 = np.multiply.reduce(xy_max1 - xy_min1)
@@ -78,7 +82,8 @@ def main():
         tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         tf.logging.info('global_step=%d' % sess.run(global_step))
-        conf, xy_min, xy_max = sess.run([builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max])
+        tensors = [builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max]
+        conf, xy_min, xy_max = sess.run([tf.check_numerics(t, t.op.name) for t in tensors])
         boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
         ax = fig.gca()
