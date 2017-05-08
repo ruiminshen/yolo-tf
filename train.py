@@ -112,7 +112,7 @@ def main():
     global_step = tf.contrib.framework.get_or_create_global_step()
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
-    variables_to_restore = slim.get_variables_to_restore()
+    variables_to_restore = slim.get_variables_to_restore(exclude=args.exclude)
     loss = builder.loss(batch[1:])
     with tf.name_scope('optimizer'):
         try:
@@ -148,6 +148,7 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default='config.ini', help='config file')
     parser.add_argument('-f', '--finetune', help='initializing model from a .ckpt file')
+    parser.add_argument('-e', '--exclude', nargs='+', help='exclude variables while fine-tuning')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
     parser.add_argument('-m', '--master', default='', help='master address')
     parser.add_argument('-t', '--task', type=int, default=0, help='task ID')
