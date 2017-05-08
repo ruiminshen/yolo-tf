@@ -133,12 +133,12 @@ def main():
         init_assign_op, init_feed_dict = slim.assign_from_checkpoint(path, variables_to_restore)
         def init_fn(sess):
             sess.run(init_assign_op, init_feed_dict)
-            tf.logging.warn('fine-tuning from global_step=%d, learning_rate=%f' % sess.run([global_step, learning_rate]))
+            tf.logging.warn('fine-tuning from global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
     else:
         init_fn = lambda sess: tf.logging.warn('global_step=%d, learning_rate=%f' % sess.run([global_step, learning_rate]))
     summary(config)
     tf.logging.warn('tensorboard --logdir ' + logdir)
-    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps,
+    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps, init_fn=init_fn,
         summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
         save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
     )
