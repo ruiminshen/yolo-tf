@@ -63,7 +63,6 @@ def main():
             feed_dict = {ph_image: image_std}
             conf, xy_min, xy_max = sess.run(tensors, feed_dict)
             boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
-            cnt = 0
             for _conf, _xy_min, _xy_max in boxes:
                 index = np.argmax(_conf)
                 if _conf[index] > args.threshold:
@@ -71,8 +70,7 @@ def main():
                     _xy_max = (_xy_max * scale).astype(np.int)
                     cv2.rectangle(image_bgr, tuple(_xy_min), tuple(_xy_max), (255, 0, 255), 3)
                     cv2.putText(image_bgr, builder.names[index] + ' (%.1f%%)' % (_conf[index] * 100), tuple(_xy_min), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    cnt += 1
-            cv2.imshow('%d objects detected' % cnt, image_bgr)
+            cv2.imshow('detection', image_bgr)
             cv2.waitKey(1)
 
 
