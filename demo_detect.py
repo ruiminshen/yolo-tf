@@ -19,6 +19,7 @@ import os
 import argparse
 import configparser
 import importlib
+import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -45,7 +46,7 @@ class Drawer(object):
         self.ax.grid(which='both')
         self.ax.tick_params(labelbottom='off', labelleft='off')
         self.fig.canvas.mpl_connect('button_press_event', self.onclick)
-        self.colors = plt.rcParams['axes.color_cycle']
+        self.colors = [prop['color'] for _, prop in zip(names, itertools.cycle(plt.rcParams['axes.prop_cycle']))]
     
     def onclick(self, event):
         for p in self.plots:
