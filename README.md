@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4, PIL, tqdm
+Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4, OpenCV, PIL, tqdm
 
 ## Configuration
 
