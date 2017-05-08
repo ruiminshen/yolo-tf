@@ -24,49 +24,17 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import utils
-
-
-def iou(xy_min1, xy_max1, xy_min2, xy_max2):
-    assert(not np.isnan(xy_min1).any())
-    assert(not np.isnan(xy_max1).any())
-    assert(not np.isnan(xy_min2).any())
-    assert(not np.isnan(xy_max2).any())
-    assert np.all(xy_min1 <= xy_max1)
-    assert np.all(xy_min2 <= xy_max2)
-    areas1 = np.multiply.reduce(xy_max1 - xy_min1)
-    areas2 = np.multiply.reduce(xy_max2 - xy_min2)
-    _xy_min = np.maximum(xy_min1, xy_min2) 
-    _xy_max = np.minimum(xy_max1, xy_max2)
-    _wh = np.maximum(_xy_max - _xy_min, 0)
-    _areas = np.multiply.reduce(_wh)
-    assert _areas <= areas1
-    assert _areas <= areas2
-    return _areas / np.maximum(areas1 + areas2 - _areas, 1e-10)
-
-
-def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
-    _, _, classes = conf.shape
-    boxes = [(_conf, _xy_min, _xy_max) for _conf, _xy_min, _xy_max in zip(conf.reshape(-1, classes), xy_min.reshape(-1, 2), xy_max.reshape(-1, 2))]
-    for c in range(classes):
-        boxes.sort(key=lambda box: box[0][c], reverse=True)
-        for i in range(len(boxes) - 1):
-            box = boxes[i]
-            if box[0][c] == 0:
-                continue
-            for _box in boxes[i + 1:]:
-                if iou(box[1], box[2], _box[1], _box[2]) >= threshold:
-                    _box[0][c] = 0
-    return boxes
+import utils.postprocess
 
 
 def main():
     model = config.get('config', 'model')
-    yolo = importlib.import_module(model)
+    yolo = importlib.import_module('model.' + model)
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
+    func = getattr(importlib.import_module('utils.preprocess'), args.preprocess)
     with tf.Session() as sess:
-        image_rgb, image_std = getattr(importlib.import_module('preprocess'), args.preprocess)(os.path.expanduser(os.path.expandvars(args.image)), width, height)
+        image_rgb, image_std = func(os.path.expanduser(os.path.expandvars(args.image)), width, height)
         builder = yolo.Builder(args, config)
         builder(tf.expand_dims(image_std, 0))
         global_step = tf.contrib.framework.get_or_create_global_step()
@@ -76,7 +44,7 @@ def main():
         tf.logging.info('global_step=%d' % sess.run(global_step))
         tensors = [builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max]
         conf, xy_min, xy_max = sess.run([tf.check_numerics(t, t.op.name) for t in tensors])
-        boxes = non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+        boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
         fig = plt.figure()
         ax = fig.gca()
         ax.imshow(sess.run(image_rgb))

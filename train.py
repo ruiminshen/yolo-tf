@@ -25,7 +25,7 @@ import inspect
 import multiprocessing
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import utils
+import utils.data
 
 
 def summary_scalar(config):
@@ -100,9 +100,9 @@ def main():
     height = config.getint(model, 'height')
     cell_width, cell_height = utils.calc_cell_width_height(config, width, height)
     tf.logging.warn('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
-    yolo = importlib.import_module(model)
+    yolo = importlib.import_module('model.' + model)
     with tf.name_scope('batch'):
-        image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+        image_rgb, labels = utils.data.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
             image_std = tf.image.per_image_standardization(image_rgb)
         batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size,
@@ -135,7 +135,7 @@ def main():
             sess.run(init_assign_op, init_feed_dict)
             tf.logging.warn('fine-tuning from global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
     else:
-        init_fn = lambda sess: tf.logging.warn('global_step=%d, learning_rate=%f' % sess.run([global_step, learning_rate]))
+        init_fn = lambda sess: tf.logging.warn('global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
     summary(config)
     tf.logging.warn('tensorboard --logdir ' + logdir)
     slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps, init_fn=init_fn,
@@ -156,7 +156,7 @@ def make_args():
     parser.add_argument('-b', '--batch_size', default=8, type=int, help='batch size')
     parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-n', '--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name for TensorBoard')
-    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='learning rate')
+    parser.add_argument('-lr', '--learning_rate', default=1e-6, type=float, help='learning rate')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')

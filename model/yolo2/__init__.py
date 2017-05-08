@@ -21,8 +21,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import utils
-import yolo
 from . import inference
+from .. import yolo
 
 
 class Model(object):

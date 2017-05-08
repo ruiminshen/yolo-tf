@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import utils
+import utils.data
 
 
 class Drawer(object):
@@ -77,12 +77,12 @@ def main():
         names = [line.strip() for line in f]
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
-    yolo = importlib.import_module(model)
+    yolo = importlib.import_module('model.' + model)
     cell_width, cell_height = utils.calc_cell_width_height(config, width, height)
     tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]
-        image_rgb, labels = utils.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
+        image_rgb, labels = utils.data.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
         image_std = tf.image.per_image_standardization(image_rgb)
         image_rgb = tf.cast(image_rgb, tf.uint8)
         ph_image = tf.placeholder(image_std.dtype, [1] + image_std.get_shape().as_list(), name='ph_image')

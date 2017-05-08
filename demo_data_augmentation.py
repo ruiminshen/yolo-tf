@@ -22,7 +22,7 @@ import multiprocessing
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import utils
+import utils.data
 
 
 def main():
@@ -36,7 +36,7 @@ def main():
     tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         with tf.name_scope('batch'):
-            image_rgb, labels = utils.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+            image_rgb, labels = utils.data.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
             batch = tf.train.shuffle_batch((tf.cast(image_rgb, tf.uint8),) + labels, batch_size=args.batch_size,
                 capacity=config.getint('queue', 'capacity'), min_after_dequeue=config.getint('queue', 'min_after_dequeue'), num_threads=multiprocessing.cpu_count()
             )

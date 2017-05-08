@@ -18,8 +18,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import inspect
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from yolo.function import leaky_relu
-from yolo2.function import reorg
+from ..yolo.function import leaky_relu
+from .function import reorg
 
 
 def tiny(net, classes, num_anchors, training=False, center=True):
@@ -28,7 +28,7 @@ def tiny(net, classes, num_anchors, training=False, center=True):
         if not center:
             net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
         return net
-    scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
+    scope = __name__.split('.')[-2] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
     with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0
@@ -64,7 +64,7 @@ def darknet(net, classes, num_anchors, training=False, center=True):
         if not center:
             net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
         return net
-    scope = __name__.split('.')[0] + '_' + inspect.stack()[0][3]
+    scope = __name__.split('.')[-2] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
     with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], weights_initializer=tf.truncated_normal_initializer(stddev=0.1), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2, 2], padding='SAME'):
         index = 0

@@ -23,8 +23,7 @@ from PIL import Image
 import tqdm
 import numpy as np
 import tensorflow as tf
-import voc
-import utils
+import utils.data.voc
 
 
 def cache_voc(writer, root, names, profile, verify=False):
@@ -36,7 +35,7 @@ def cache_voc(writer, root, names, profile, verify=False):
         filenames = [line.strip() for line in f]
     namedict = dict([(name, i) for i, name in enumerate(names)])
     for filename in tqdm.tqdm(filenames):
-        imagename, imageshape, objects_class, objects_coord = voc.load_dataset(os.path.join(root, 'Annotations', filename + '.xml'), namedict)
+        imagename, imageshape, objects_class, objects_coord = utils.data.voc.load_dataset(os.path.join(root, 'Annotations', filename + '.xml'), namedict)
         objects_class = np.array(objects_class, dtype=np.int64)
         objects_coord = np.array(objects_coord, dtype=np.float32)
         if len(objects_class) > 0:

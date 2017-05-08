@@ -27,7 +27,7 @@ import struct
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import yolo2.inference as inference
+import model.yolo2.inference as inference
 import utils
 
 
