@@ -18,7 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import re
 import importlib
-import configparser
 import inspect
 import numpy as np
 import matplotlib.patches as patches
@@ -227,14 +226,6 @@ def match_trainable_variables(pattern):
 def match_tensor(pattern):
     prog = re.compile(pattern)
     return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and prog.match(op.name)]
-
-
-def tensorboard_histogram(pattern):
-    try:
-        for t in match_tensor(pattern):
-            tf.summary.histogram(t.op.name, t)
-    except configparser.NoOptionError:
-        pass
 
 
 def get_factor2(x):
