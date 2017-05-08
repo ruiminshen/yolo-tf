@@ -15,23 +15,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import cv2
 import numpy as np
-import tensorflow as tf
-from tensorflow.python.framework import ops
 
 
-def std(path, width, height):
-    imagefile = tf.read_file(path)
-    image_rgb = tf.image.decode_jpeg(imagefile, channels=3)
-    image_rgb = tf.image.resize_images(image_rgb, [height, width])
-    image_std = tf.image.per_image_standardization(image_rgb)
-    return tf.cast(image_rgb, tf.uint8), image_std
-
-
-def darknet(path, width, height):
-    _image = cv2.imread(path)
-    _image = cv2.cvtColor(_image, cv2.COLOR_BGR2RGB)
-    _image = cv2.resize(_image, (width, height))
-    image = _image / 255.
-    return ops.convert_to_tensor(_image), ops.convert_to_tensor(image.astype(np.float32))
+def per_image_standardization(image):
+    stddev = np.std(image)
+    return (image - np.mean(image)) / max(stddev, 1.0 / np.sqrt(np.multiply.reduce(image.shape)))
