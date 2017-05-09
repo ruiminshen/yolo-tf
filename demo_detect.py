@@ -39,6 +39,7 @@ class Drawer(object):
         self.fig = plt.figure()
         self.ax = self.fig.gca()
         height, width, _ = image.shape
+        self.scale = [width / self.cell_width, height / self.cell_height]
         self.ax.imshow(image)
         self.plots = utils.draw_labels(self.ax, names, width, height, cell_width, cell_height, *labels)
         self.ax.set_xticks(np.arange(0, width, width / cell_width))
@@ -58,8 +59,8 @@ class Drawer(object):
         self.plots.append(self.ax.add_patch(patches.Rectangle((ix * width / self.cell_width, iy * height / self.cell_height), width / self.cell_width, height / self.cell_height, linewidth=0, facecolor='black', alpha=.2)))
         index = iy * self.cell_width + ix
         prob, iou, xy_min, wh = self.sess.run([self.model.prob[0][index], self.model.iou[0][index], self.model.xy_min[0][index], self.model.wh[0][index]], feed_dict=self.feed_dict)
-        xy_min = xy_min * [width, height] / [self.cell_width, self.cell_height]
-        wh = wh * [width, height] / [self.cell_width, self.cell_height]
+        xy_min = xy_min * self.scale
+        wh = wh * self.scale
         for _prob, _iou, (x, y), (w, h), color in zip(prob, iou, xy_min, wh, self.colors):
             index = np.argmax(_prob)
             name = self.names[index]
