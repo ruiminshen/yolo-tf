@@ -23,16 +23,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import utils.preprocess
 import utils.postprocess
-
-
-def std(image):
-    return utils.preprocess.per_image_standardization(image)
-
-
-def darknet(image):
-    return image / 255.
 
 
 def main():
@@ -40,7 +31,7 @@ def main():
     yolo = importlib.import_module('model.' + model)
     width = config.getint(model, 'width')
     height = config.getint(model, 'height')
-    preprocess = eval(args.preprocess)
+    preprocess = getattr(importlib.import_module('detect'), args.preprocess)
     with tf.Session() as sess:
         ph_image = tf.placeholder(tf.float32, [1, height, width, 3], name='ph_image')
         builder = yolo.Builder(args, config)
