@@ -133,5 +133,5 @@ if __name__ == '__main__':
     assert os.path.exists(args.config)
     config.read(args.config)
     if args.level:
-        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+        tf.logging.set_verbosity(args.level.upper())
     main()
