@@ -30,14 +30,14 @@ class Model(object):
         _, self.cell_height, self.cell_width, _ = net.get_shape().as_list()
         cells = self.cell_height * self.cell_width
         inputs = tf.reshape(net, [-1, cells, len(anchors), 5 + classes], name='inputs')
-        with tf.name_scope('inputs_split'):
-            _inputs = tf.nn.sigmoid(inputs[:, :, :, :3])
-            self.iou = _inputs[:, :, :, 0]
-            self.offset_xy = tf.identity(_inputs[:, :, :, 1:3], name='offset_xy')
-            self.wh = tf.identity(tf.exp(inputs[:, :, :, 3:5]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name='wh')
-            prob = inputs[:, :, :, 5:]
-            self.prob = tf.reshape(tf.nn.softmax(prob), prob.get_shape(), name='prob')
-        with tf.name_scope('labels'):
+        with tf.name_scope('regress'):
+            with tf.name_scope('inputs'):
+                _inputs = tf.nn.sigmoid(inputs[:, :, :, :3])
+                self.iou = _inputs[:, :, :, 0]
+                self.offset_xy = tf.identity(_inputs[:, :, :, 1:3], name='offset_xy')
+                self.wh = tf.identity(tf.exp(inputs[:, :, :, 3:5]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name='wh')
+                prob = inputs[:, :, :, 5:]
+                self.prob = tf.reshape(tf.nn.softmax(prob), prob.get_shape(), name='prob')
             self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
             _wh = self.wh / 2
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
@@ -74,9 +74,9 @@ class Objectives(dict):
             areas = tf.maximum(self.areas + model.areas - _areas, 1e-10)
             iou = tf.truediv(_areas, areas, name=name)
         with tf.name_scope('mask'):
-            max_iou = tf.reduce_max(iou, 2, True, name='max_iou')
-            mask_max_iou = tf.to_float(tf.equal(iou, max_iou, name='mask_max_iou'))
-            mask_best = tf.identity(self.mask * mask_max_iou, name='mask_best')
+            best_box_iou = tf.reduce_max(iou, 2, True, name='best_box_iou')
+            best_box = tf.to_float(tf.equal(iou, best_box_iou, name='best_box'))
+            mask_best = tf.identity(self.mask * best_box, name='mask_best')
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         with tf.name_scope('diff2'):
             iou_diff2 = tf.pow(model.iou - mask_best, 2, name='iou_diff2')

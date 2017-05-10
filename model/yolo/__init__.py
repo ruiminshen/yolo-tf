@@ -38,14 +38,14 @@ class Model(object):
     def __init__(self, net, scope, classes, boxes_per_cell):
         _, self.cell_height, self.cell_width, _ = tf.get_default_graph().get_tensor_by_name(scope + '/conv:0').get_shape().as_list()
         cells = self.cell_height * self.cell_width
-        with tf.name_scope('labels'):
-            end = cells * classes
-            self.prob = tf.reshape(net[:, :end], [-1, cells, 1, classes], name='prob')
-            inputs_remaining = tf.reshape(net[:, end:], [-1, cells, boxes_per_cell, 5], name='inputs_remaining')
-            self.iou = tf.identity(inputs_remaining[:, :, :, 0], name='iou')
-            self.offset_xy = tf.identity(inputs_remaining[:, :, :, 1:3], name='offset_xy')
-            wh01_sqrt_base = tf.identity(inputs_remaining[:, :, :, 3:], name='wh01_sqrt_base')
-        with tf.name_scope('labels'):
+        with tf.name_scope('regress'):
+            with tf.name_scope('inputs'):
+                end = cells * classes
+                self.prob = tf.reshape(net[:, :end], [-1, cells, 1, classes], name='prob')
+                inputs_remaining = tf.reshape(net[:, end:], [-1, cells, boxes_per_cell, 5], name='inputs_remaining')
+                self.iou = tf.identity(inputs_remaining[:, :, :, 0], name='iou')
+                self.offset_xy = tf.identity(inputs_remaining[:, :, :, 1:3], name='offset_xy')
+                wh01_sqrt_base = tf.identity(inputs_remaining[:, :, :, 3:], name='wh01_sqrt_base')
             wh01 = tf.identity(wh01_sqrt_base ** 2, name='wh01')
             wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
             self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
@@ -85,9 +85,9 @@ class Objectives(dict):
             areas = tf.maximum(self.areas + model.areas - _areas, 1e-10)
             iou = tf.truediv(_areas, areas, name=name)
         with tf.name_scope('mask'):
-            max_iou = tf.reduce_max(iou, 2, True, name='max_iou')
-            mask_max_iou = tf.to_float(tf.equal(iou, max_iou, name='mask_max_iou'))
-            mask_best = tf.identity(self.mask * mask_max_iou, name='mask_best')
+            best_box_iou = tf.reduce_max(iou, 2, True, name='best_box_iou')
+            best_box = tf.to_float(tf.equal(iou, best_box_iou, name='best_box'))
+            mask_best = tf.identity(self.mask * best_box, name='mask_best')
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
         with tf.name_scope('diff2'):
             iou_diff2 = tf.pow(model.iou - mask_best, 2, name='iou_diff2')
@@ -96,9 +96,8 @@ class Objectives(dict):
         with tf.name_scope('objectives'):
             self['iou_best'] = tf.reduce_sum(mask_best * iou_diff2, name='iou_best')
             self['iou_normal'] = tf.reduce_sum(mask_normal * iou_diff2, name='iou_normal')
-            _mask_best = tf.expand_dims(mask_best, -1)
-            self['coords'] = tf.reduce_sum(_mask_best * coords_diff2, name='coords')
-            self['prob'] = tf.reduce_sum(_mask_best * prob_diff2, name='prob')
+            self['coords'] = tf.reduce_sum(tf.expand_dims(mask_best, -1) * coords_diff2, name='coords')
+            self['prob'] = tf.reduce_sum(tf.expand_dims(self.mask, -1) * prob_diff2, name='prob')
 
 
 class Builder(object):
