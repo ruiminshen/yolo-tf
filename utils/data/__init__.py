@@ -23,6 +23,7 @@ import numpy as np
 import matplotlib.patches as patches
 import tensorflow as tf
 import sympy
+from .. import preprocess
 
 
 def decode_image_objects(paths):
@@ -47,50 +48,63 @@ def decode_image_objects(paths):
     return image, example['imageshape'], objects_class, objects_coord
 
 
-def resize_image_objects(image, imageshape, objects_coord, width, height):
+def _data_augmentation_coord(image, objects_coord, width_height, config):
+    section = inspect.stack()[0][3][1:]
+    with tf.name_scope(section):
+        if config.getboolean(section, 'random_crop'):
+            image, objects_coord, width_height = preprocess.random_crop(image, objects_coord, width_height)
+        if config.getboolean(section, 'random_flip'):
+            image, objects_coord, width_height = preprocess.random_flip_left_right(image, objects_coord, width_height)
+    return image, objects_coord, width_height
+
+
+def data_augmentation_coord(image, objects_coord, width_height, config):
+    section = inspect.stack()[0][3]
+    with tf.name_scope(section):
+        with tf.name_scope('random_enable'):
+            pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
+            fn1 = lambda: _data_augmentation_coord(image, objects_coord, width_height, config)
+            fn2 = lambda: (image, objects_coord, width_height)
+            image, objects_coord, width_height = tf.cond(pred, fn1, fn2)
+    return image, objects_coord, width_height
+
+
+def resize_image_objects(image, objects_coord, width_height, width, height, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR):
     with tf.name_scope(inspect.stack()[0][3]):
-        image = tf.image.resize_images(image, [height, width])
-        factor = tf.cast([width, height] / imageshape[1::-1], objects_coord.dtype)
+        image = tf.image.resize_images(image, [height, width], method=method)
+        factor = [width, height] / width_height
         objects_coord = objects_coord * tf.tile(factor, [2])
     return image, objects_coord
 
 
-def data_augmentation(image, objects_coord, width, height, config):
-    section = inspect.stack()[0][3]
-    _image = image
-    _objects_coord = tf.cast(objects_coord, tf.int32)
+def _data_augmentation_resized(image, config):
+    section = inspect.stack()[0][3][1:]
     with tf.name_scope(section):
         if config.getboolean(section, 'random_brightness'):
-            _image = tf.image.random_brightness(_image, max_delta=63)
+            image = tf.image.random_brightness(image, max_delta=63)
         if config.getboolean(section, 'random_saturation'):
-            _image = tf.image.random_saturation(_image, lower=0.5, upper=1.5)
+            image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
         if config.getboolean(section, 'random_hue'):
-            _image = tf.image.random_hue(_image, max_delta=0.032)
+            image = tf.image.random_hue(image, max_delta=0.032)
         if config.getboolean(section, 'random_contrast'):
-            _image = tf.image.random_contrast(_image, lower=0.5, upper=1.5)
+            image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
         grayscale_probability = config.getfloat(section, 'grayscale_probability')
         if grayscale_probability > 0:
-            with tf.name_scope('random_grayscale'):
-                _image = tf.cond(tf.random_uniform([], 0, 1) < grayscale_probability, lambda: tf.tile(tf.image.rgb_to_grayscale(_image), [1] * (len(image.get_shape()) - 1) + [3]), lambda: image)
-        if config.getboolean(section, 'random_move'):
-            with tf.name_scope('random_move'):
-                xy_min = tf.reduce_min(objects_coord[:, :2], 0)
-                xy_max = tf.reduce_max(objects_coord[:, 2:], 0)
-                a = xy_max - [width, height]
-                b = xy_min
-                xy_move = a + tf.random_uniform([2]) * (b - a)
-                _xy_move = tf.cast(xy_move, tf.int32)
-                _xy_min = tf.maximum(_xy_move, [0, 0])
-                _xy_max = tf.minimum([width, height] + _xy_move, [width, height])
-                _wh = _xy_max - _xy_min
-                _image = tf.image.crop_to_bounding_box(_image, _xy_min[1], _xy_min[0], _wh[1], _wh[0])
-                _xy_move = tf.maximum(-_xy_move, tf.zeros([2], dtype=tf.int32))
-                _image = tf.image.pad_to_bounding_box(_image, _xy_move[1], _xy_move[0], height, width)
-                objects_coord = objects_coord - tf.tile(xy_move, [2])
-        _image = tf.clip_by_value(_image, 0, 255)
+            image = preprocess.random_grayscale(image)
+        image = tf.clip_by_value(image, 0, 255)
+    return image
+
+
+def data_augmentation_resized(image, config):
+    section = inspect.stack()[0][3]
+    _image = tf.cast(image, tf.float32)
+    with tf.name_scope(section):
         with tf.name_scope('random_enable'):
-            image = tf.cond(tf.random_uniform([], 0, 1) < config.getfloat(section, 'enable_probability'), lambda: _image, lambda: image)
-    return image, objects_coord
+            pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
+            fn1 = lambda: tf.cast(_data_augmentation_resized(tf.cast(image, tf.float32), config), image.dtype)
+            fn2 = lambda: image
+            image = tf.cond(pred, fn1, fn2)
+    return image
 
 
 def transform_labels(objects_class, objects_coord, classes, cell_width, cell_height, dtype=np.float32):
@@ -146,9 +160,12 @@ def decode_labels(objects_class, objects_coord, classes, cell_width, cell_height
 def load_image_labels(paths, classes, width, height, cell_width, cell_height, config):
     with tf.name_scope('batch'):
         image_rgb, imageshape, objects_class, objects_coord = decode_image_objects(paths)
-        image_rgb, objects_coord = resize_image_objects(image_rgb, imageshape, objects_coord, width, height)
-        if config.getboolean('data_augmentation', 'enable'):
-            image_rgb, objects_coord = data_augmentation(image_rgb, objects_coord, width, height, config)
+        width_height = tf.cast(imageshape[1::-1], tf.float32)
+        if config.getboolean('data_augmentation_coord', 'enable'):
+            image_rgb, objects_coord, width_height = data_augmentation_coord(image_rgb, objects_coord, width_height, config)
+        image_rgb, objects_coord = resize_image_objects(image_rgb, objects_coord, width_height, width, height)
+        if config.getboolean('data_augmentation_resized', 'enable'):
+            image_rgb = data_augmentation_resized(image_rgb, config)
         objects_coord = objects_coord / tf.cast([width, height, width, height], objects_coord.dtype)
         with tf.device('/cpu:0'):
             labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
