@@ -23,6 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import utils.data
+import utils.visualize
 
 
 def main():
@@ -52,7 +53,7 @@ def main():
     fig, axes = plt.subplots(args.rows, args.cols)
     for b, (ax, image) in enumerate(zip(axes.flat, batch_image)):
         ax.imshow(image)
-        utils.draw_labels(ax, names, width, height, cell_width, cell_height, *[l[b] for l in batch_labels])
+        utils.visualize.draw_labels(ax, names, width, height, cell_width, cell_height, *[l[b] for l in batch_labels])
         ax.set_xticks(np.arange(0, width, width / cell_width))
         ax.set_yticks(np.arange(0, height, height / cell_height))
         ax.grid(which='both')

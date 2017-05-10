@@ -26,6 +26,7 @@ import matplotlib.patches as patches
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import utils.data
+import utils.visualize
 
 
 class Drawer(object):
@@ -41,7 +42,7 @@ class Drawer(object):
         height, width, _ = image.shape
         self.scale = [width / self.cell_width, height / self.cell_height]
         self.ax.imshow(image)
-        self.plots = utils.draw_labels(self.ax, names, width, height, cell_width, cell_height, *labels)
+        self.plots = utils.visualize.draw_labels(self.ax, names, width, height, cell_width, cell_height, *labels)
         self.ax.set_xticks(np.arange(0, width, width / cell_width))
         self.ax.set_yticks(np.arange(0, height, height / cell_height))
         self.ax.grid(which='both')
