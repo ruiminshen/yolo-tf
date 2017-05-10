@@ -38,6 +38,12 @@ def cache_voc(writer, root, names, profile, verify=False):
         imagename, imageshape, objects_class, objects_coord = utils.data.voc.load_dataset(os.path.join(root, 'Annotations', filename + '.xml'), namedict)
         objects_class = np.array(objects_class, dtype=np.int64)
         objects_coord = np.array(objects_coord, dtype=np.float32)
+        if verify:
+            assert np.all(objects_coord >= 0)
+            assert np.all(objects_coord <= np.tile(imageshape[1::-1], [2]))
+        else:
+            objects_coord = np.maximum(objects_coord, np.zeros([4]))
+            objects_coord = np.minimum(objects_coord, np.tile(imageshape[1::-1], [2]))
         if len(objects_class) > 0:
             imagepath = os.path.join(root, 'JPEGImages', imagename)
             if verify:
@@ -90,5 +96,5 @@ if __name__ == '__main__':
     assert os.path.exists(args.config)
     config.read(args.config)
     if args.level:
-        tf.logging.set_verbosity(eval('tf.logging.' + args.level.upper()))
+        tf.logging.set_verbosity(args.level.upper())
     main()
