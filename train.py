@@ -146,7 +146,7 @@ def main():
 
 def make_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-f', '--finetune', help='initializing model from a .ckpt file')
     parser.add_argument('-e', '--exclude', nargs='+', help='exclude variables while fine-tuning')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
@@ -167,8 +167,7 @@ def make_args():
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
-    assert os.path.exists(args.config)
-    config.read(args.config)
+    utils.load_config(config, args.config)
     if args.level:
         tf.logging.set_verbosity(args.level.upper())
     main()

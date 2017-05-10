@@ -14,10 +14,17 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 - Run "cache.py" to create the cache file for the training program.
 
-- Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the optimizer and the maximum number of steps.
+- Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the optimization algorithm and the maximum number of steps.
 
 - Run "detect.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error during the training process.
 
 ## License
 
 This project is released as the open source software with the GNU Lesser General Public License version 3 ([LGPL v3](http://www.gnu.org/licenses/lgpl-3.0.html)).
+
+# Acknowledgements
+
+This project is mainly inspired by the following projects:
+
+* [YOLO (Darknet)](https://pjreddie.com/darknet/yolo/).
+* [darkflow](https://github.com/thtrieu/darkflow).

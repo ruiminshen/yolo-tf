@@ -61,11 +61,10 @@ def _data_augmentation_coord(image, objects_coord, width_height, config):
 def data_augmentation_coord(image, objects_coord, width_height, config):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
-        with tf.name_scope('random_enable'):
-            pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
-            fn1 = lambda: _data_augmentation_coord(image, objects_coord, width_height, config)
-            fn2 = lambda: (image, objects_coord, width_height)
-            image, objects_coord, width_height = tf.cond(pred, fn1, fn2)
+        pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
+        fn1 = lambda: _data_augmentation_coord(image, objects_coord, width_height, config)
+        fn2 = lambda: (image, objects_coord, width_height)
+        image, objects_coord, width_height = tf.cond(pred, fn1, fn2)
     return image, objects_coord, width_height
 
 
@@ -99,11 +98,10 @@ def data_augmentation_resized(image, config):
     section = inspect.stack()[0][3]
     _image = tf.cast(image, tf.float32)
     with tf.name_scope(section):
-        with tf.name_scope('random_enable'):
-            pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
-            fn1 = lambda: tf.cast(_data_augmentation_resized(tf.cast(image, tf.float32), config), image.dtype)
-            fn2 = lambda: image
-            image = tf.cond(pred, fn1, fn2)
+        pred = tf.random_uniform([]) < config.getfloat(section, 'enable_probability')
+        fn1 = lambda: tf.cast(_data_augmentation_resized(tf.cast(image, tf.float32), config), image.dtype)
+        fn2 = lambda: image
+        image = tf.cond(pred, fn1, fn2)
     return image
 
 
@@ -166,7 +164,7 @@ def load_image_labels(paths, classes, width, height, cell_width, cell_height, co
         image_rgb, objects_coord = resize_image_objects(image_rgb, objects_coord, width_height, width, height)
         if config.getboolean('data_augmentation_resized', 'enable'):
             image_rgb = data_augmentation_resized(image_rgb, config)
-        objects_coord = objects_coord / tf.cast([width, height, width, height], objects_coord.dtype)
+        objects_coord = objects_coord / [width, height, width, height]
         with tf.device('/cpu:0'):
             labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
     return image_rgb, labels

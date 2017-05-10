@@ -86,7 +86,7 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('image', help='input image')
-    parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-p', '--preprocess', default='std', help='the preprocess function')
     parser.add_argument('-t', '--threshold', type=float, default=0.3, help='detection threshold')
     parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
@@ -96,8 +96,7 @@ def make_args():
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
-    assert os.path.exists(args.config)
-    config.read(args.config)
+    utils.load_config(config, args.config)
     if args.level:
         tf.logging.set_verbosity(args.level.upper())
     main()

@@ -101,3 +101,10 @@ def get_factor2(x):
     else:
         i = len(factors) // 2
         return factors[i], factors[i]
+
+
+def load_config(config, paths):
+    for path in paths:
+        path = os.path.expanduser(os.path.expandvars(path))
+        assert os.path.exists(path)
+        config.read(path)

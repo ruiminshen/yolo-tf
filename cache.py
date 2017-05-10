@@ -84,7 +84,7 @@ def main():
 
 def make_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val', 'test'])
     parser.add_argument('-v', '--verify', action='store_true')
     parser.add_argument('--level', default='info', help='logging level')
@@ -93,8 +93,7 @@ def make_args():
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
-    assert os.path.exists(args.config)
-    config.read(args.config)
+    utils.load_config(config, args.config)
     if args.level:
         tf.logging.set_verbosity(args.level.upper())
     main()

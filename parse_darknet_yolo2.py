@@ -93,7 +93,7 @@ def main():
                         p = struct.unpack('%df' % cnt, f.read(4 * cnt))
                         if suffix == 'weights':
                             ksize1, ksize2, channels_in, channels_out = shape
-                            p = np.reshape(p, [channels_out, channels_in, ksize1, ksize2]) # DarkNet format
+                            p = np.reshape(p, [channels_out, channels_in, ksize1, ksize2]) # Darknet format
                             p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
                         sess.run(v.assign(p))
                     tf.logging.info('%d parameters assigned' % total)
@@ -119,8 +119,8 @@ def main():
 
 def make_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('file', help='DarkNet .weights file')
-    parser.add_argument('-c', '--config', default='config.ini', help='config file')
+    parser.add_argument('file', help='Darknet .weights file')
+    parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-s', '--summary', action='store_true')
     parser.add_argument('--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name of TensorBoard log')
@@ -130,8 +130,7 @@ def make_args():
 if __name__ == '__main__':
     args = make_args()
     config = configparser.ConfigParser()
-    assert os.path.exists(args.config)
-    config.read(args.config)
+    utils.load_config(config, args.config)
     if args.level:
         tf.logging.set_verbosity(args.level.upper())
     main()
