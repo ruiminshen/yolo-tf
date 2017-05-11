@@ -100,12 +100,12 @@ def data_augmentation_resized(image, config):
         if config.getboolean(section, 'noise'):
             image = tf.cond(
                 tf.random_uniform([]) < config.getfloat(section, 'enable_probability'),
-                lambda: image + tf.truncated_normal(image.get_shape()) * 15,
+                lambda: image + tf.truncated_normal(image.get_shape()) * tf.random_uniform([], 5, 15),
                 lambda: image
             )
         grayscale_probability = config.getfloat(section, 'grayscale_probability')
         if grayscale_probability > 0:
-            image = preprocess.random_grayscale(image)
+            image = preprocess.random_grayscale(image, grayscale_probability)
     return image
 
 

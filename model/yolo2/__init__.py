@@ -78,16 +78,16 @@ class Objectives(dict):
             best_box = tf.to_float(tf.equal(iou, best_box_iou, name='best_box'))
             mask_best = tf.identity(self.mask * best_box, name='mask_best')
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
-        with tf.name_scope('diff2'):
-            iou_diff2 = tf.pow(model.iou - mask_best, 2, name='iou_diff2')
-            coords_diff2 = tf.pow(model.coords - self.coords, 2, name='coords_diff2')
-            prob_diff2 = tf.pow(model.prob - self.prob, 2, name='prob_diff2')
-        with tf.name_scope('objectives'):
-            self['iou_best'] = tf.reduce_sum(mask_best * iou_diff2, name='iou_best')
-            self['iou_normal'] = tf.reduce_sum(mask_normal * iou_diff2, name='iou_normal')
+        with tf.name_scope('dist'): # use abs instead of square
+            iou_dist = tf.abs(model.iou - mask_best, name='iou_dist')
+            coords_dist = tf.abs(model.coords - self.coords, name='coords_dist')
+            prob_dist = tf.abs(model.prob - self.prob, name='prob_dist')
+        with tf.name_scope('objectives'): # use reduce_mean instead of reduce_sum
+            self['iou_best'] = tf.reduce_mean(mask_best * iou_dist, name='iou_best')
+            self['iou_normal'] = tf.reduce_mean(mask_normal * iou_dist, name='iou_normal')
             _mask_best = tf.expand_dims(mask_best, -1)
-            self['coords'] = tf.reduce_sum(_mask_best * coords_diff2, name='coords')
-            self['prob'] = tf.reduce_sum(_mask_best * prob_diff2, name='prob')
+            self['coords'] = tf.reduce_mean(_mask_best * coords_dist, name='coords')
+            self['prob'] = tf.reduce_mean(_mask_best * prob_dist, name='prob')
 
 
 class Builder(yolo.Builder):
