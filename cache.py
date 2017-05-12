@@ -42,11 +42,10 @@ def main():
             for name, dataset in datasets:
                 tf.logging.info('loading %s %s dataset' % (name, profile))
                 func = getattr(module, name)
-                for i, item in dataset.iterrows():
-                    tf.logging.info('loading item %d\n%s' % (i, str(item)))
-                    func(writer, name_index, profile, item, args.verify)
+                for i, row in dataset.iterrows():
+                    tf.logging.info('loading data %d (%s)' % (i, ', '.join([k + '=' + str(v) for k, v in row.items()])))
+                    func(writer, name_index, profile, row, args.verify)
     tf.logging.info('%s data are saved into %s' % (str(args.profile), cachedir))
-    
 
 
 def make_args():
