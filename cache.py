@@ -42,7 +42,8 @@ def main():
             for name, dataset in datasets:
                 tf.logging.info('loading %s %s dataset' % (name, profile))
                 func = getattr(module, name)
-                for _, item in dataset.iterrows():
+                for i, item in dataset.iterrows():
+                    tf.logging.info('loading item %d\n%s' % (i, str(item)))
                     func(writer, name_index, profile, item, args.verify)
     tf.logging.info('%s data are saved into %s' % (str(args.profile), cachedir))
     

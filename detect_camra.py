@@ -43,25 +43,29 @@ def main():
         tensors = [builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max]
         tensors = [tf.check_numerics(t, t.op.name) for t in tensors]
         cap = cv2.VideoCapture(0)
-        while True:
-            ret, image_bgr = cap.read()
-            assert ret
-            image_width, image_height, _ = image_bgr.shape
-            scale = [image_width / builder.model.cell_width, image_height / builder.model.cell_height]
-            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-            image_std = np.expand_dims(preprocess(cv2.resize(image_rgb, (width, height))).astype(np.float32), 0)
-            feed_dict = {ph_image: image_std}
-            conf, xy_min, xy_max = sess.run(tensors, feed_dict)
-            boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
-            for _conf, _xy_min, _xy_max in boxes:
-                index = np.argmax(_conf)
-                if _conf[index] > args.threshold:
-                    _xy_min = (_xy_min * scale).astype(np.int)
-                    _xy_max = (_xy_max * scale).astype(np.int)
-                    cv2.rectangle(image_bgr, tuple(_xy_min), tuple(_xy_max), (255, 0, 255), 3)
-                    cv2.putText(image_bgr, builder.names[index] + ' (%.1f%%)' % (_conf[index] * 100), tuple(_xy_min), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.imshow('detection', image_bgr)
-            cv2.waitKey(1)
+        try:
+            while True:
+                ret, image_bgr = cap.read()
+                assert ret
+                image_width, image_height, _ = image_bgr.shape
+                scale = [image_width / builder.model.cell_width, image_height / builder.model.cell_height]
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                image_std = np.expand_dims(preprocess(cv2.resize(image_rgb, (width, height))).astype(np.float32), 0)
+                feed_dict = {ph_image: image_std}
+                conf, xy_min, xy_max = sess.run(tensors, feed_dict)
+                boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+                for _conf, _xy_min, _xy_max in boxes:
+                    index = np.argmax(_conf)
+                    if _conf[index] > args.threshold:
+                        _xy_min = (_xy_min * scale).astype(np.int)
+                        _xy_max = (_xy_max * scale).astype(np.int)
+                        cv2.rectangle(image_bgr, tuple(_xy_min), tuple(_xy_max), (255, 0, 255), 3)
+                        cv2.putText(image_bgr, builder.names[index] + ' (%.1f%%)' % (_conf[index] * 100), tuple(_xy_min), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.imshow('detection', image_bgr)
+                cv2.waitKey(1)
+        finally:
+            cv2.destroyAllWindows()
+            cap.release()
 
 
 def make_args():

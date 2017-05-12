@@ -26,31 +26,35 @@ from .. import yolo
 
 
 class Model(object):
-    def __init__(self, net, classes, anchors):
+    def __init__(self, net, classes, anchors, training=False):
         _, self.cell_height, self.cell_width, _ = net.get_shape().as_list()
         cells = self.cell_height * self.cell_width
         inputs = tf.reshape(net, [-1, cells, len(anchors), 5 + classes], name='inputs')
         with tf.name_scope('regress'):
             with tf.name_scope('inputs'):
-                _inputs = tf.nn.sigmoid(inputs[:, :, :, :3])
-                self.iou = _inputs[:, :, :, 0]
-                self.offset_xy = tf.identity(_inputs[:, :, :, 1:3], name='offset_xy')
-                self.wh = tf.identity(tf.exp(inputs[:, :, :, 3:5]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name='wh')
-                prob = inputs[:, :, :, 5:]
-                self.prob = tf.reshape(tf.nn.softmax(prob), prob.get_shape(), name='prob')
-            self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
+                with tf.name_scope('inputs_sigmoid') as name:
+                    inputs_sigmoid = tf.nn.sigmoid(inputs[:, :, :, :3], name=name)
+                self.iou = tf.identity(inputs_sigmoid[:, :, :, 0], name='iou')
+                self.offset_xy = tf.identity(inputs_sigmoid[:, :, :, 1:3], name='offset_xy')
+                with tf.name_scope('wh') as name:
+                    self.wh = tf.identity(tf.exp(inputs[:, :, :, 3:5]) * np.reshape(anchors, [1, 1, len(anchors), -1]), name=name)
+                with tf.name_scope('prob') as name:
+                    self.prob = tf.identity(tf.nn.softmax(inputs[:, :, :, 5:]), name=name)
+            with tf.name_scope('areas') as name:
+                self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name=name)
             _wh = self.wh / 2
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
             self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
             self.wh01 = tf.identity(self.wh / np.reshape([self.cell_width, self.cell_height], [1, 1, 1, 2]), name='wh01')
             self.wh01_sqrt = tf.sqrt(self.wh01, name='wh01_sqrt')
             self.coords = tf.concat([self.offset_xy, self.wh01_sqrt], -1, name='coords')
-        with tf.name_scope('detection'):
-            cell_xy = yolo.calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
-            self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
-            self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
-            self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
-            self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
+        if not training:
+            with tf.name_scope('detection'):
+                cell_xy = yolo.calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
+                self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
+                self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
+                self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
+                self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         self.inputs = net
         self.classes = classes
         self.anchors = anchors
@@ -75,19 +79,19 @@ class Objectives(dict):
             iou = tf.truediv(_areas, areas, name=name)
         with tf.name_scope('mask'):
             best_box_iou = tf.reduce_max(iou, 2, True, name='best_box_iou')
-            best_box = tf.to_float(tf.equal(iou, best_box_iou, name='best_box'))
+            best_box = tf.to_float(tf.equal(iou, best_box_iou), name='best_box')
             mask_best = tf.identity(self.mask * best_box, name='mask_best')
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
-        with tf.name_scope('dist'): # use abs instead of square
-            iou_dist = tf.abs(model.iou - mask_best, name='iou_dist')
-            coords_dist = tf.abs(model.coords - self.coords, name='coords_dist')
-            prob_dist = tf.abs(model.prob - self.prob, name='prob_dist')
-        with tf.name_scope('objectives'): # use reduce_mean instead of reduce_sum
-            self['iou_best'] = tf.reduce_mean(mask_best * iou_dist, name='iou_best')
-            self['iou_normal'] = tf.reduce_mean(mask_normal * iou_dist, name='iou_normal')
+        with tf.name_scope('dist'):
+            iou_dist = tf.square(model.iou - mask_best, name='iou_dist')
+            coords_dist = tf.square(model.coords - self.coords, name='coords_dist')
+            prob_dist = tf.square(model.prob - self.prob, name='prob_dist')
+        with tf.name_scope('objectives'):
+            self['iou_best'] = tf.reduce_sum(mask_best * iou_dist, name='iou_best')
+            self['iou_normal'] = tf.reduce_sum(mask_normal * iou_dist, name='iou_normal')
             _mask_best = tf.expand_dims(mask_best, -1)
-            self['coords'] = tf.reduce_mean(_mask_best * coords_dist, name='coords')
-            self['prob'] = tf.reduce_mean(_mask_best * prob_dist, name='prob')
+            self['coords'] = tf.reduce_sum(_mask_best * coords_dist, name='coords')
+            self['prob'] = tf.reduce_sum(_mask_best * prob_dist, name='prob')
 
 
 class Builder(yolo.Builder):
@@ -105,7 +109,7 @@ class Builder(yolo.Builder):
     def __call__(self, data, training=False):
         _, self.output = self.func(data, len(self.names), len(self.anchors), training=training)
         with tf.name_scope(__name__.split('.')[-1]):
-            self.model = Model(self.output, len(self.names), self.anchors)
+            self.model = Model(self.output, len(self.names), self.anchors, training=training)
     
     def loss(self, labels):
         section = __name__.split('.')[-1]

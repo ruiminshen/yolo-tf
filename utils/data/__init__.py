@@ -51,10 +51,11 @@ def decode_image_objects(paths):
 def data_augmentation_coord(image, objects_coord, width_height, config):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
-        if config.getboolean(section, 'random_crop'):
+        random_crop = config.getfloat(section, 'random_crop')
+        if random_crop > 0:
             image, objects_coord, width_height = tf.cond(
                 tf.random_uniform([]) < config.getfloat(section, 'enable_probability'),
-                lambda: preprocess.random_crop(image, objects_coord, width_height),
+                lambda: preprocess.random_crop(image, objects_coord, width_height, random_crop),
                 lambda: (image, objects_coord, width_height)
             )
         if config.getboolean(section, 'random_flip_left_right'):

@@ -35,7 +35,7 @@ def calc_cell_xy(cell_height, cell_width, dtype=np.float32):
 
 
 class Model(object):
-    def __init__(self, net, scope, classes, boxes_per_cell):
+    def __init__(self, net, scope, classes, boxes_per_cell, training=False):
         _, self.cell_height, self.cell_width, _ = tf.get_default_graph().get_tensor_by_name(scope + '/conv:0').get_shape().as_list()
         cells = self.cell_height * self.cell_width
         with tf.name_scope('regress'):
@@ -46,7 +46,7 @@ class Model(object):
                 self.iou = tf.identity(inputs_remaining[:, :, :, 0], name='iou')
                 self.offset_xy = tf.identity(inputs_remaining[:, :, :, 1:3], name='offset_xy')
                 wh01_sqrt_base = tf.identity(inputs_remaining[:, :, :, 3:], name='wh01_sqrt_base')
-            wh01 = tf.identity(wh01_sqrt_base ** 2, name='wh01')
+            wh01 = tf.square(wh01_sqrt_base, name='wh01')
             wh01_sqrt = tf.abs(wh01_sqrt_base, name='wh01_sqrt')
             self.coords = tf.concat([self.offset_xy, wh01_sqrt], -1, name='coords')
             self.wh = tf.identity(wh01 * [self.cell_width, self.cell_height], name='wh')
@@ -54,14 +54,15 @@ class Model(object):
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
             self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
             self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
-        with tf.name_scope('detection'):
-            cell_xy = calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
-            self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
-            self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
-            self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
-            self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         with tf.name_scope('regularizer') as name:
-            self.regularizer = tf.reduce_sum([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name=name)
+            self.regularizer = tf.reduce_mean([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name=name)
+        if not training:
+            with tf.name_scope('detection'):
+                cell_xy = calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
+                self.xy = tf.identity(cell_xy + self.offset_xy, name='xy')
+                self.xy_min = tf.identity(cell_xy + self.offset_xy_min, name='xy_min')
+                self.xy_max = tf.identity(cell_xy + self.offset_xy_max, name='xy_max')
+                self.conf = tf.identity(tf.expand_dims(self.iou, -1) * self.prob, name='conf')
         self.inputs = net
         self.classes = classes
         self.boxes_per_cell = boxes_per_cell
@@ -86,18 +87,18 @@ class Objectives(dict):
             iou = tf.truediv(_areas, areas, name=name)
         with tf.name_scope('mask'):
             best_box_iou = tf.reduce_max(iou, 2, True, name='best_box_iou')
-            best_box = tf.to_float(tf.equal(iou, best_box_iou, name='best_box'))
+            best_box = tf.to_float(tf.equal(iou, best_box_iou), name='best_box')
             mask_best = tf.identity(self.mask * best_box, name='mask_best')
             mask_normal = tf.identity(1 - mask_best, name='mask_normal')
-        with tf.name_scope('dist'): # use abs instead of square
-            iou_dist = tf.abs(model.iou - mask_best, name='iou_dist')
-            coords_dist = tf.abs(model.coords - self.coords, name='coords_dist')
-            prob_dist = tf.abs(model.prob - self.prob, name='prob_dist')
-        with tf.name_scope('objectives'): # use reduce_mean instead of reduce_sum
-            self['iou_best'] = tf.reduce_mean(mask_best * iou_dist, name='iou_best')
-            self['iou_normal'] = tf.reduce_mean(mask_normal * iou_dist, name='iou_normal')
-            self['coords'] = tf.reduce_mean(tf.expand_dims(mask_best, -1) * coords_dist, name='coords')
-            self['prob'] = tf.reduce_mean(tf.expand_dims(self.mask, -1) * prob_dist, name='prob')
+        with tf.name_scope('dist'):
+            iou_dist = tf.square(model.iou - mask_best, name='iou_dist')
+            coords_dist = tf.square(model.coords - self.coords, name='coords_dist')
+            prob_dist = tf.square(model.prob - self.prob, name='prob_dist')
+        with tf.name_scope('objectives'):
+            self['iou_best'] = tf.reduce_sum(mask_best * iou_dist, name='iou_best')
+            self['iou_normal'] = tf.reduce_sum(mask_normal * iou_dist, name='iou_normal')
+            self['coords'] = tf.reduce_sum(tf.expand_dims(mask_best, -1) * coords_dist, name='coords')
+            self['prob'] = tf.reduce_sum(tf.expand_dims(self.mask, -1) * prob_dist, name='prob')
 
 
 class Builder(object):

@@ -48,7 +48,6 @@ def main():
         batch_image, batch_labels = sess.run([batch[0], batch[1:]])
         coord.request_stop()
         coord.join(threads)
-    print(np.min(batch_image), np.max(batch_image))
     batch_image = batch_image.astype(np.uint8)
     fig, axes = plt.subplots(args.rows, args.cols)
     for b, (ax, image) in enumerate(zip(axes.flat, batch_image)):

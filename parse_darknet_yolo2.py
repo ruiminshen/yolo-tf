@@ -96,6 +96,8 @@ def main():
                             p = np.reshape(p, [channels_out, channels_in, ksize1, ksize2]) # Darknet format
                             p = np.transpose(p, [2, 3, 1, 0]) # TensorFlow format (ksize1, ksize2, channels_in, channels_out)
                         sess.run(v.assign(p))
+                        if suffix == 'beta':
+                            print(np.sum(p))
                     tf.logging.info('%d parameters assigned' % total)
                 remaining = os.fstat(f.fileno()).st_size - f.tell()
             transpose(sess, layer, len(anchors))
