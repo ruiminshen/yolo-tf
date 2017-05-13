@@ -48,7 +48,7 @@ def decode_image_objects(paths):
     return image, example['imageshape'], objects_class, objects_coord
 
 
-def data_augmentation_coord(image, objects_coord, width_height, config):
+def data_augmentation_full(image, objects_coord, width_height, config):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
         random_crop = config.getfloat(section, 'random_crop')
@@ -165,8 +165,8 @@ def load_image_labels(paths, classes, width, height, cell_width, cell_height, co
         image, imageshape, objects_class, objects_coord = decode_image_objects(paths)
         image = tf.cast(image, tf.float32)
         width_height = tf.cast(imageshape[1::-1], tf.float32)
-        if config.getboolean('data_augmentation_coord', 'enable'):
-            image, objects_coord, width_height = data_augmentation_coord(image, objects_coord, width_height, config)
+        if config.getboolean('data_augmentation_full', 'enable'):
+            image, objects_coord, width_height = data_augmentation_full(image, objects_coord, width_height, config)
         image, objects_coord = resize_image_objects(image, objects_coord, width_height, width, height)
         if config.getboolean('data_augmentation_resized', 'enable'):
             image = data_augmentation_resized(image, config)
