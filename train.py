@@ -126,7 +126,9 @@ def main():
             tf.logging.warn('using a staionary learning rate %f' % args.learning_rate)
         optimizer = get_optimizer(config, args.optimizer)(learning_rate)
         tf.logging.warn('optimizer=' + args.optimizer)
-        train_op = slim.learning.create_train_op(loss, optimizer, global_step, clip_gradient_norm=args.gradient_clip)
+        train_op = slim.learning.create_train_op(loss, optimizer, global_step,
+            clip_gradient_norm=args.gradient_clip, summarize_gradients=config.getboolean('summary', 'gradients'),
+        )
     if args.finetune:
         path = os.path.expanduser(os.path.expandvars(args.finetune))
         tf.logging.warn('fine-tuning from ' + path)
