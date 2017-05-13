@@ -126,7 +126,7 @@ def main():
             tf.logging.warn('using a staionary learning rate %f' % args.learning_rate)
         optimizer = get_optimizer(config, args.optimizer)(learning_rate)
         tf.logging.warn('optimizer=' + args.optimizer)
-        train_op = slim.learning.create_train_op(loss, optimizer, global_step, clip_gradient_norm=args.clip_gradient)
+        train_op = slim.learning.create_train_op(loss, optimizer, global_step, clip_gradient_norm=args.gradient_clip)
     if args.finetune:
         path = os.path.expanduser(os.path.expandvars(args.finetune))
         tf.logging.warn('fine-tuning from ' + path)
@@ -157,8 +157,8 @@ def make_args():
     parser.add_argument('-b', '--batch_size', default=8, type=int, help='batch size')
     parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-n', '--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name for TensorBoard')
+    parser.add_argument('-g', '--gradient_clip', default=0, type=float, help='gradient clip')
     parser.add_argument('-lr', '--learning_rate', default=1e-5, type=float, help='learning rate')
-    parser.add_argument('-cg', '--clip_gradient', default=0, type=int, help='clip gradient')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')
