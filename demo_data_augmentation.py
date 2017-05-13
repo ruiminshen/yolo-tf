@@ -53,10 +53,14 @@ def main():
     for b, (ax, image) in enumerate(zip(axes.flat, batch_image)):
         ax.imshow(image)
         utils.visualize.draw_labels(ax, names, width, height, cell_width, cell_height, *[l[b] for l in batch_labels])
-        ax.set_xticks(np.arange(0, width, width / cell_width))
-        ax.set_yticks(np.arange(0, height, height / cell_height))
-        ax.grid(which='both')
-        ax.tick_params(labelbottom='off', labelleft='off')
+        if args.grid:
+            ax.set_xticks(np.arange(0, width, width / cell_width))
+            ax.set_yticks(np.arange(0, height, height / cell_height))
+            ax.grid(which='both')
+            ax.tick_params(labelbottom='off', labelleft='off')
+        else:
+            ax.set_xticks([])
+            ax.set_yticks([])
     fig.tight_layout()
     plt.show()
 
@@ -65,9 +69,9 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
+    parser.add_argument('-g', '--grid', action='store_true')
     parser.add_argument('--rows', default=5, type=int)
     parser.add_argument('--cols', default=5, type=int)
-    parser.add_argument('-b', '--batch_size', default=16, type=int, help='batch size')
     parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 
