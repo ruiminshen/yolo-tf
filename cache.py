@@ -62,4 +62,5 @@ if __name__ == '__main__':
     utils.load_config(config, args.config)
     if args.level:
         tf.logging.set_verbosity(args.level.upper())
-    main()
+    with tf.Session() as sess:
+        main()

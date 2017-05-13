@@ -16,22 +16,32 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
+import inspect
 from PIL import Image
 import tqdm
 import numpy as np
-import scipy.misc
 import tensorflow as tf
 import utils.data.voc
 
 
 def verify_imageshape(imagepath, imageshape):
-    with Image.open(imagepath) as img:
-        return np.all(np.equal(img.size, imageshape[1::-1]))
+    with Image.open(imagepath) as image:
+        return np.all(np.equal(image.size, imageshape[1::-1]))
 
 
-def verify_image(imagepath, imageshape):
-    img = scipy.misc.imread(imagepath)
-    return np.all(np.equal(img.shape[:2], imageshape[:2]))
+def verify_image_jpeg(imagepath, imageshape):
+    scope = inspect.stack()[0][3]
+    try:
+        graph = tf.get_default_graph()
+        path = graph.get_tensor_by_name(scope + '/path:0')
+        decode = graph.get_tensor_by_name(scope + '/decode_jpeg:0')
+    except KeyError:
+        tf.logging.warn('creating decode_jpeg tensor')
+        path = tf.placeholder(tf.string, name=scope + '/path')
+        imagefile = tf.read_file(path, name=scope + '/read_file')
+        decode = tf.image.decode_jpeg(imagefile, channels=3, name=scope + '/decode_jpeg')
+    image = tf.get_default_session().run(decode, {path: imagepath})
+    return np.all(np.equal(image.shape[:2], imageshape[:2]))
 
 
 def check_coords(objects_coord):
@@ -66,14 +76,12 @@ def voc(writer, name_index, profile, row, verify=False):
             objects_coord = np.array(objects_coord, dtype=np.float32)
             if verify:
                 assert verify_coords(objects_coord, imageshape)
-            else:
-                objects_coord = fix_coords(objects_coord, imageshape)
             if len(objects_class) <= 0:
                 cnt_noobj += 1
                 continue
             imagepath = os.path.join(root, 'JPEGImages', imagename)
             if verify:
-                assert verify_image(imagepath, imageshape)
+                assert verify_image_jpeg(imagepath, imageshape)
             assert len(objects_class) == len(objects_coord)
             example = tf.train.Example(features=tf.train.Features(feature={
                 'imagepath': tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(imagepath)])),
@@ -118,7 +126,7 @@ def coco(writer, name_index, profile, row, verify=False):
             width, height = img['width'], img['height']
             imageshape = [height, width, 3]
             if verify:
-                assert verify_image(imagepath, imageshape)
+                assert verify_image_jpeg(imagepath, imageshape)
             objects_class = [id_index[ann['category_id']] for ann in anns]
             objects_coord = [ann['bbox'] for ann in anns]
             objects_coord = [(x, y, x + w, y + h) for x, y, w, h in objects_coord]
@@ -126,8 +134,6 @@ def coco(writer, name_index, profile, row, verify=False):
             objects_coord = np.array(objects_coord, dtype=np.float32)
             if verify:
                 assert verify_coords(objects_coord, imageshape)
-            else:
-                objects_coord = fix_coords(objects_coord, imageshape)
             assert len(objects_class) == len(objects_coord)
             example = tf.train.Example(features=tf.train.Features(feature={
                 'imagepath': tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(imagepath)])),
