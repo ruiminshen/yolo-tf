@@ -12,7 +12,7 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 - Download the PASCAL VOC2007 ([training, validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar) and [test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)) and VOC2012 ([training and validation](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar)) dataset. Extract these tars into one directory (such as "~/Documents/Database/").
 
-- Download the COCO 2014 ([training](http://msvocds.blob.core.windows.net/coco2014/val2014.zip), [validation](http://msvocds.blob.core.windows.net/coco2014/val2014.zip), and [test](http://msvocds.blob.core.windows.net/coco2014/test2014.zip)) dataset. Extract these zip files into one directory (such as "~/Documents/Database/coco/").
+- Download the COCO 2014 ([training](http://msvocds.blob.core.windows.net/coco2014/train2014.zip), [validation](http://msvocds.blob.core.windows.net/coco2014/val2014.zip), and [test](http://msvocds.blob.core.windows.net/coco2014/test2014.zip)) dataset. Extract these zip files into one directory (such as "~/Documents/Database/coco/").
 
 - Run "cache.py" to create the cache file for the training program. A verify option "-v" is recommended to check the training data and drop the corrupted examples.
 
