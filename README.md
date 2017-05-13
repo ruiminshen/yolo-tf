@@ -22,7 +22,7 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 ## Examples
 
-### Training a 20 classes Darknet YOLO2 model from a pretrained 80 classes model
+### Training a 20 classes Darknet YOLOv2 model from a pretrained 80 classes model
 
 - Cache the 20 classes training data using the customized config file option. Files (.tfrecord) in "~/Documents/Database/yolo-tf/cache/voc" will be created.
 
@@ -30,15 +30,15 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 python3 cache.py -c config.ini config/yolo2/darknet-voc.ini -v
 ```
 
-- Download a 80 classes Darknet YOLO2 model (the original file name is "yolo.weights", a [version](https://drive.google.com/drive/folders/0B1tW_VtY7onidEwyQ2FtQVplWEU) from Darkflow is recommanded). In this tutorial I put it in "~/Downloads/yolo.weights".
+- Download a 80 classes Darknet YOLOv2 model (the original file name is "yolo.weights", a [version](https://drive.google.com/drive/folders/0B1tW_VtY7onidEwyQ2FtQVplWEU) from Darkflow is recommanded). In this tutorial I put it in "~/Downloads/yolo.weights".
 
-- Parse the 80 classes Darknet YOLO2 model into Tensorflow format (~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt). A warning like "xxx bytes remaining" indicates the file "yolo.weights" is not compatiable with the original Darknet YOLO2 model (defined in the function `model.yolo2.inference.darknet`).
+- Parse the 80 classes Darknet YOLOv2 model into Tensorflow format (~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt). A warning like "xxx bytes remaining" indicates the file "yolo.weights" is not compatiable with the original Darknet YOLOv2 model (defined in the function `model.yolo2.inference.darknet`).
 
 ```
 python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-coco.ini -d
 ```
 
-- Fine-tuning the 80 classes Darknet YOLO2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping. **Be ware the "-d" option will delete the model files and should be used only once when initializing the model**.
+- Fine-tuning the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping. **Be ware the "-d" option will delete the model files and should be used only once when initializing the model**.
 
 ```
 python3 train.py -c config.ini config/yolo2/darknet-voc.ini -f ~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt -e yolo2_darknet/conv -g 0.9 -d
