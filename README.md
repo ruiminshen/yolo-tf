@@ -38,7 +38,7 @@ python3 cache.py -c config.ini config/yolo2/darknet-voc.ini -v
 python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-coco.ini -d
 ```
 
-- Fine-tuning the 80 classes Darknet YOLO2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping. Be ware the "-d" option will delete the model files and should be used only once when initializing the model.
+- Fine-tuning the 80 classes Darknet YOLO2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping. **Be ware the "-d" option will delete the model files and should be used only once when initializing the model**.
 
 ```
 python3 train.py -c config.ini config/yolo2/darknet-voc.ini -f ~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt -e yolo2_darknet/conv -g 0.9 -d
