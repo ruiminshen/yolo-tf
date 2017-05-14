@@ -36,7 +36,7 @@ def verify_image_jpeg(imagepath, imageshape):
         path = graph.get_tensor_by_name(scope + '/path:0')
         decode = graph.get_tensor_by_name(scope + '/decode_jpeg:0')
     except KeyError:
-        tf.logging.warn('creating decode_jpeg tensor')
+        tf.logging.debug('creating decode_jpeg tensor')
         path = tf.placeholder(tf.string, name=scope + '/path')
         imagefile = tf.read_file(path, name=scope + '/read_file')
         decode = tf.image.decode_jpeg(imagefile, channels=3, name=scope + '/decode_jpeg')

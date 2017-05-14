@@ -6,7 +6,7 @@ Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup
 
 ## Configuration
 
-Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). Be ware the configurations can be extended by the "-c" option in command argument.
+Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). Be ware the configurations can be extended using the "-c" command-line argument.
 
 ## Basic Usage
 
@@ -14,9 +14,9 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 - Download the [COCO](http://mscoco.org/) 2014 ([training](http://msvocds.blob.core.windows.net/coco2014/train2014.zip), [validation](http://msvocds.blob.core.windows.net/coco2014/val2014.zip), and [test](http://msvocds.blob.core.windows.net/coco2014/test2014.zip)) dataset. Extract these zip files into one directory (such as "~/Documents/Database/coco/").
 
-- Run "cache.py" to create the cache file for the training program. A verify option "-v" is recommended to check the training data and drop the corrupted examples.
+- Run "cache.py" to create the cache file for the training program. A verify command-line argument "-v" is recommended to check the training data and drop the corrupted examples.
 
-- Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command line options can be defined to control the training process. Such as the batch size, the learning rate, the optimization algorithm and the maximum number of steps.
+- Run "train.py" to start the training process (the model data saved previously will be loaded if it exists). Multiple command-line arguments can be defined to control the training process. Such as the batch size, the learning rate, the optimization algorithm and the maximum number of steps.
 
 - Run "detect.py" to detect objects in an image. Run "export CUDA_VISIBLE_DEVICES=" to avoid out of GPU memory error while the training process is running.
 
@@ -24,7 +24,7 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 ### Training a 20 classes Darknet YOLOv2 model from a pretrained 80 classes model
 
-- Cache the 20 classes training data using the customized config file option. Files (.tfrecord) in "~/Documents/Database/yolo-tf/cache/voc" will be created.
+- Cache the 20 classes training data using the customized config file argument. Cache files (.tfrecord) in "~/Documents/Database/yolo-tf/cache/voc" will be created.
 
 ```
 python3 cache.py -c config.ini config/yolo2/darknet-voc.ini -v
@@ -38,7 +38,7 @@ python3 cache.py -c config.ini config/yolo2/darknet-voc.ini -v
 python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-coco.ini -d
 ```
 
-- Fine-tuning the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping to avoid NaN error. **Be ware the "-d" option will delete the model files and should be used only once when initializing the model**.
+- Fine-tuning the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer. Starting the training process with gradient clipping to avoid NaN error. **Be ware the "-d" command-line argument will delete the model files and should be used only once when initializing the model**.
 
 ```
 python3 train.py -c config.ini config/yolo2/darknet-voc.ini -f ~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt -e yolo2_darknet/conv -g 0.9 -d
