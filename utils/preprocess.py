@@ -42,24 +42,22 @@ def random_crop(image, objects_coord, width_height, scale=1):
     return image, objects_coord, _wh
 
 
-def flip_left_right(image, objects_coord, width_height):
+def flip_left_right(image, objects_coord, width):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
         image = tf.image.flip_left_right(image)
         xmin, ymin, xmax, ymax = objects_coord[:, 0:1], objects_coord[:, 1:2], objects_coord[:, 2:3], objects_coord[:, 3:4]
-        width = width_height[0]
         objects_coord = tf.concat([width - xmax, ymin, width - xmin, ymax], 1)
-    return image, objects_coord, width_height
+    return image, objects_coord
 
 
-def random_flip_left_right(image, objects_coord, width_height, probability=0.5):
+def random_flip_left_right(image, objects_coord, width, probability=0.5):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
         pred = tf.random_uniform([]) < probability
-        fn1 = lambda: flip_left_right(image, objects_coord, width_height)
-        fn2 = lambda: (image, objects_coord, width_height)
-        image, objects_coord, width_height = tf.cond(pred, fn1, fn2)
-    return image, objects_coord, width_height
+        fn1 = lambda: flip_left_right(image, objects_coord, width)
+        fn2 = lambda: (image, objects_coord)
+        return tf.cond(pred, fn1, fn2)
 
 
 def random_grayscale(image, probability=0.5):
@@ -70,5 +68,4 @@ def random_grayscale(image, probability=0.5):
         pred = tf.random_uniform([]) < probability
         fn1 = lambda: tf.tile(tf.image.rgb_to_grayscale(image), [1] * (len(image.get_shape()) - 1) + [3])
         fn2 = lambda: image
-        image = tf.cond(pred, fn1, fn2)
-    return image
+        return tf.cond(pred, fn1, fn2)

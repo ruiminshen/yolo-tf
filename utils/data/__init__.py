@@ -58,8 +58,6 @@ def data_augmentation_full(image, objects_coord, width_height, config):
                 lambda: preprocess.random_crop(image, objects_coord, width_height, random_crop),
                 lambda: (image, objects_coord, width_height)
             )
-        if config.getboolean(section, 'random_flip_left_right'):
-            image, objects_coord, width_height = preprocess.random_flip_left_right(image, objects_coord, width_height)
     return image, objects_coord, width_height
 
 
@@ -71,9 +69,11 @@ def resize_image_objects(image, objects_coord, width_height, width, height):
     return image, objects_coord
 
 
-def data_augmentation_resized(image, config):
+def data_augmentation_resized(image, objects_coord, width, height, config):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
+        if config.getboolean(section, 'random_flip_left_right'):
+            image, objects_coord = preprocess.random_flip_left_right(image, objects_coord, width)
         if config.getboolean(section, 'random_brightness'):
             image = tf.cond(
                 tf.random_uniform([]) < config.getfloat(section, 'enable_probability'),
@@ -107,7 +107,7 @@ def data_augmentation_resized(image, config):
         grayscale_probability = config.getfloat(section, 'grayscale_probability')
         if grayscale_probability > 0:
             image = preprocess.random_grayscale(image, grayscale_probability)
-    return image
+    return image, objects_coord
 
 
 def transform_labels(objects_class, objects_coord, classes, cell_width, cell_height, dtype=np.float32):
@@ -169,7 +169,7 @@ def load_image_labels(paths, classes, width, height, cell_width, cell_height, co
             image, objects_coord, width_height = data_augmentation_full(image, objects_coord, width_height, config)
         image, objects_coord = resize_image_objects(image, objects_coord, width_height, width, height)
         if config.getboolean('data_augmentation_resized', 'enable'):
-            image = data_augmentation_resized(image, config)
+            image, objects_coord = data_augmentation_resized(image, objects_coord, width, height, config)
         image = tf.clip_by_value(image, 0, 255)
         objects_coord = objects_coord / [width, height, width, height]
         with tf.device('/cpu:0'):
