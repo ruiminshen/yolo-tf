@@ -112,8 +112,8 @@ def main():
     global_step = tf.contrib.framework.get_or_create_global_step()
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
-    variables_to_restore = slim.get_variables_to_restore(exclude=args.exclude)
     loss = builder.loss(batch[1:])
+    variables_to_restore = slim.get_variables_to_restore(exclude=args.exclude)
     with tf.name_scope('optimizer'):
         try:
             decay_steps = config.getint('exponential_decay', 'decay_steps')
