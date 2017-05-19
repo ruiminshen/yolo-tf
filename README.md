@@ -48,7 +48,7 @@ python3 cache.py -c config.ini config/yolo2/darknet-20.ini -v
 python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-80.ini -d
 ```
 
-- Transferring the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/20) except the final convolutional layer and hyper-parameters. **Be ware the "-d" command-line argument will delete the model files and should be used only once when initializing the model**. A command-line argument "-g" can be used to perform gradient clipping to avoid NaN error.
+- Transferring the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/20) except the final convolutional layer and hyper-parameters. **Be ware the "-d" command-line argument will delete the model files and should be used only once when initializing the model**.
 
 ```
 python3 train.py -c config.ini config/yolo2/darknet-20.ini -t ~/Documents/Database/yolo-tf/yolo2/darknet/80/model.ckpt -e yolo2_darknet/conv loss/hparam -d
