@@ -26,7 +26,7 @@ def tiny(net, classes, num_anchors, training=False, center=True):
     def batch_norm(net):
         net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
         if not center:
-            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
+            net = tf.nn.bias_add(net, slim.variable('biases', shape=[tf.shape(net)[-1]], initializer=tf.zeros_initializer()))
         return net
     scope = __name__.split('.')[-2] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)
@@ -62,7 +62,7 @@ def darknet(net, classes, num_anchors, training=False, center=True):
     def batch_norm(net):
         net = slim.batch_norm(net, center=center, scale=True, epsilon=1e-5, is_training=training)
         if not center:
-            net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape()[-1]], initializer=tf.zeros_initializer()))
+            net = tf.nn.bias_add(net, slim.variable('biases', shape=[tf.shape(net)[-1]], initializer=tf.zeros_initializer()))
         return net
     scope = __name__.split('.')[-2] + '_' + inspect.stack()[0][3]
     net = tf.identity(net, name='%s/input' % scope)

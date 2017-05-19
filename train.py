@@ -67,23 +67,16 @@ def summary(config):
     summary_histogram(config)
 
 
-__optimizers__ = {
-    'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
-    'adadelta': lambda learning_rate: tf.train.AdadeltaOptimizer(learning_rate),
-    'adagrad': lambda learning_rate: tf.train.AdagradOptimizer(learning_rate),
-    'momentum': lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, 0.9),
-    'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate),
-    'ftrl': lambda learning_rate: tf.train.FtrlOptimizer(learning_rate),
-    'gd': lambda learning_rate: tf.train.GradientDescentOptimizer(learning_rate),
-}
-
-
 def get_optimizer(config, name):
     section = 'optimizer_' + name
     return {
-        'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate),
+        'adam': lambda learning_rate: tf.train.AdamOptimizer(learning_rate, config.getfloat(section, 'beta1'), config.getfloat(section, 'beta2'), config.getfloat(section, 'epsilon')),
+        'adadelta': lambda learning_rate: tf.train.AdadeltaOptimizer(learning_rate, config.getfloat(section, 'rho'), config.getfloat(section, 'epsilon')),
+        'adagrad': lambda learning_rate: tf.train.AdagradOptimizer(learning_rate, config.getfloat(section, 'initial_accumulator_value')),
         'momentum': lambda learning_rate: tf.train.MomentumOptimizer(learning_rate, config.getfloat(section, 'momentum')),
-        'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate),
+        'rmsprop': lambda learning_rate: tf.train.RMSPropOptimizer(learning_rate, config.getfloat(section, 'decay'), config.getfloat(section, 'momentum'), config.getfloat(section, 'epsilon')),
+        'ftrl': lambda learning_rate: tf.train.FtrlOptimizer(learning_rate, config.getfloat(section, 'learning_rate_power'), config.getfloat(section, 'initial_accumulator_value'), config.getfloat(section, 'l1_regularization_strength'), config.getfloat(section, 'l2_regularization_strength')),
+        'gd': lambda learning_rate: tf.train.GradientDescentOptimizer(learning_rate),
     }[name]
 
 
@@ -101,8 +94,11 @@ def main():
     cell_width, cell_height = utils.calc_cell_width_height(config, width, height)
     tf.logging.warn('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     yolo = importlib.import_module('model.' + model)
+    paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]
+    num_examples = sum(sum(1 for _ in tf.python_io.tf_record_iterator(path)) for path in paths)
+    tf.logging.warn('num_examples=%d' % num_examples)
     with tf.name_scope('batch'):
-        image_rgb, labels = utils.data.load_image_labels([os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile], len(names), width, height, cell_width, cell_height, config)
+        image_rgb, labels = utils.data.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
         with tf.name_scope('per_image_standardization'):
             image_std = tf.image.per_image_standardization(image_rgb)
         batch = tf.train.shuffle_batch((image_std,) + labels, batch_size=args.batch_size,
@@ -129,18 +125,19 @@ def main():
         train_op = slim.learning.create_train_op(loss, optimizer, global_step,
             clip_gradient_norm=args.gradient_clip, summarize_gradients=config.getboolean('summary', 'gradients'),
         )
-    if args.finetune:
-        path = os.path.expanduser(os.path.expandvars(args.finetune))
-        tf.logging.warn('fine-tuning from ' + path)
+    if args.transfer:
+        path = os.path.expanduser(os.path.expandvars(args.transfer))
+        tf.logging.warn('transferring from ' + path)
         init_assign_op, init_feed_dict = slim.assign_from_checkpoint(path, variables_to_restore)
         def init_fn(sess):
             sess.run(init_assign_op, init_feed_dict)
-            tf.logging.warn('fine-tuning from global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
+            tf.logging.warn('transferring from global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
     else:
         init_fn = lambda sess: tf.logging.warn('global_step=%d, learning_rate=%f' % sess.run((global_step, learning_rate)))
     summary(config)
     tf.logging.warn('tensorboard --logdir ' + logdir)
-    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0), global_step=global_step, number_of_steps=args.steps, init_fn=init_fn,
+    slim.learning.train(train_op, logdir, master=args.master, is_chief=(args.task == 0),
+        global_step=global_step, number_of_steps=args.steps, init_fn=init_fn,
         summary_writer=tf.summary.FileWriter(os.path.join(logdir, args.logname)),
         save_summaries_secs=args.summary_secs, save_interval_secs=args.save_secs
     )
@@ -149,11 +146,9 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
-    parser.add_argument('-f', '--finetune', help='initializing model from a .ckpt file')
-    parser.add_argument('-e', '--exclude', nargs='+', help='exclude variables while fine-tuning')
+    parser.add_argument('-t', '--transfer', help='transferring model from a .ckpt file')
+    parser.add_argument('-e', '--exclude', nargs='+', help='exclude variables while transferring')
     parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
-    parser.add_argument('-m', '--master', default='', help='master address')
-    parser.add_argument('-t', '--task', type=int, default=0, help='task ID')
     parser.add_argument('-s', '--steps', type=int, default=None, help='max number of steps')
     parser.add_argument('-d', '--delete', action='store_true', help='delete logdir')
     parser.add_argument('-b', '--batch_size', default=8, type=int, help='batch size')
@@ -165,6 +160,8 @@ def make_args():
     parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')
     parser.add_argument('--level', help='logging level')
+    parser.add_argument('--master', default='', help='master address')
+    parser.add_argument('--task', type=int, default=0, help='task ID')
     return parser.parse_args()
 
 if __name__ == '__main__':

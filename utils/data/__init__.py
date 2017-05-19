@@ -72,8 +72,8 @@ def resize_image_objects(image, objects_coord, width_height, width, height):
 def data_augmentation_resized(image, objects_coord, width, height, config):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
-        if config.getboolean(section, 'random_flip_left_right'):
-            image, objects_coord = preprocess.random_flip_left_right(image, objects_coord, width)
+        if config.getboolean(section, 'random_flip_horizontally'):
+            image, objects_coord = preprocess.random_flip_horizontally(image, objects_coord, width)
         if config.getboolean(section, 'random_brightness'):
             image = tf.cond(
                 tf.random_uniform([]) < config.getfloat(section, 'enable_probability'),
@@ -101,7 +101,7 @@ def data_augmentation_resized(image, objects_coord, width, height, config):
         if config.getboolean(section, 'noise'):
             image = tf.cond(
                 tf.random_uniform([]) < config.getfloat(section, 'enable_probability'),
-                lambda: image + tf.truncated_normal(image.get_shape()) * tf.random_uniform([], 5, 15),
+                lambda: image + tf.truncated_normal(tf.shape(image)) * tf.random_uniform([], 5, 15),
                 lambda: image
             )
         grayscale_probability = config.getfloat(section, 'grayscale_probability')
@@ -172,6 +172,5 @@ def load_image_labels(paths, classes, width, height, cell_width, cell_height, co
             image, objects_coord = data_augmentation_resized(image, objects_coord, width, height, config)
         image = tf.clip_by_value(image, 0, 255)
         objects_coord = objects_coord / [width, height, width, height]
-        with tf.device('/cpu:0'):
-            labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
+        labels = decode_labels(objects_class, objects_coord, classes, cell_width, cell_height)
     return image, labels

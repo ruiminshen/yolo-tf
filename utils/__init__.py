@@ -22,7 +22,7 @@ import inspect
 import numpy as np
 import matplotlib.patches as patches
 import tensorflow as tf
-import sympy
+from tensorflow.python.client import device_lib
 
 
 def get_cachedir(config):
@@ -66,18 +66,12 @@ def match_tensor(pattern):
     return [op.values()[0] for op in tf.get_default_graph().get_operations() if op.values() and prog.match(op.name)]
 
 
-def get_factor2(x):
-    factors = sympy.divisors(x)
-    if len(factors) % 2 == 0:
-        i = int(len(factors) / 2)
-        return factors[i], factors[i - 1]
-    else:
-        i = len(factors) // 2
-        return factors[i], factors[i]
-
-
 def load_config(config, paths):
     for path in paths:
         path = os.path.expanduser(os.path.expandvars(path))
         assert os.path.exists(path)
         config.read(path)
+
+def get_available_gpus():
+    local_device_protos = device_lib.list_local_devices()
+    return [x.name for x in local_device_protos if x.device_type == 'GPU']

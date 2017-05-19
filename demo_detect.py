@@ -85,6 +85,8 @@ def main():
     tf.logging.info('(width, height)=(%d, %d), (cell_width, cell_height)=(%d, %d)' % (width, height, cell_width, cell_height))
     with tf.Session() as sess:
         paths = [os.path.join(cachedir, profile + '.tfrecord') for profile in args.profile]
+        num_examples = sum(sum(1 for _ in tf.python_io.tf_record_iterator(path)) for path in paths)
+        tf.logging.warn('num_examples=%d' % num_examples)
         image_rgb, labels = utils.data.load_image_labels(paths, len(names), width, height, cell_width, cell_height, config)
         image_std = tf.image.per_image_standardization(image_rgb)
         image_rgb = tf.cast(image_rgb, tf.uint8)
@@ -116,7 +118,7 @@ def main():
 def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
-    parser.add_argument('-p', '--profile', nargs='+', default=['train', 'val'])
+    parser.add_argument('-p', '--profile', nargs='+', default=['train'])
     parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 

@@ -103,8 +103,8 @@ def coco(writer, name_index, profile, row, verify=False):
     if not os.path.exists(path):
         tf.logging.warn(path + ' not exists')
         return
-    from pycocotools.coco import COCO
-    coco = COCO(path)
+    import pycocotools.coco
+    coco = pycocotools.coco.COCO(path)
     catIds = coco.getCatIds(catNms=list(name_index.keys()))
     cats = coco.loadCats(catIds)
     id_index = dict((cat['id'], name_index[cat['name']]) for cat in cats)

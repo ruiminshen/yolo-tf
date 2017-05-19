@@ -42,7 +42,7 @@ def random_crop(image, objects_coord, width_height, scale=1):
     return image, objects_coord, _wh
 
 
-def flip_left_right(image, objects_coord, width):
+def flip_horizontally(image, objects_coord, width):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
         image = tf.image.flip_left_right(image)
@@ -51,11 +51,11 @@ def flip_left_right(image, objects_coord, width):
     return image, objects_coord
 
 
-def random_flip_left_right(image, objects_coord, width, probability=0.5):
+def random_flip_horizontally(image, objects_coord, width, probability=0.5):
     section = inspect.stack()[0][3]
     with tf.name_scope(section):
         pred = tf.random_uniform([]) < probability
-        fn1 = lambda: flip_left_right(image, objects_coord, width)
+        fn1 = lambda: flip_horizontally(image, objects_coord, width)
         fn2 = lambda: (image, objects_coord)
         return tf.cond(pred, fn1, fn2)
 

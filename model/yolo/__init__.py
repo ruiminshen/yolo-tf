@@ -53,7 +53,7 @@ class Model(object):
             _wh = self.wh / 2
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
             self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
-            self.areas = tf.identity(self.wh[:, :, :, 0] * self.wh[:, :, :, 1], name='areas')
+            self.areas = tf.reduce_prod(self.wh, -1, name='areas')
         with tf.name_scope('regularizer') as name:
             self.regularizer = tf.reduce_mean([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name=name)
         if not training:
@@ -79,11 +79,11 @@ class Objectives(dict):
             self.offset_xy_max = tf.identity(offset_xy_max, name='offset_xy_max')
             self.areas = tf.identity(areas, name='areas')
         with tf.name_scope('iou') as name:
-            _offset_xy_min = tf.maximum(model.offset_xy_min, self.offset_xy_min) 
-            _offset_xy_max = tf.minimum(model.offset_xy_max, self.offset_xy_max)
-            _wh = tf.maximum(_offset_xy_max - _offset_xy_min, 0.0)
-            _areas = _wh[:, :, :, 0] * _wh[:, :, :, 1]
-            areas = tf.maximum(self.areas + model.areas - _areas, 1e-10)
+            _offset_xy_min = tf.maximum(model.offset_xy_min, self.offset_xy_min, name='_offset_xy_min') 
+            _offset_xy_max = tf.minimum(model.offset_xy_max, self.offset_xy_max, name='_offset_xy_max')
+            _wh = tf.maximum(_offset_xy_max - _offset_xy_min, 0.0, name='_wh')
+            _areas = tf.reduce_prod(_wh, -1, name='_areas')
+            areas = tf.maximum(self.areas + model.areas - _areas, 1e-10, name='areas')
             iou = tf.truediv(_areas, areas, name=name)
         with tf.name_scope('mask'):
             best_box_iou = tf.reduce_max(iou, 2, True, name='best_box_iou')

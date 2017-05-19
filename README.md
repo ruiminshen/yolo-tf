@@ -2,11 +2,21 @@
 
 ## Dependencies
 
-Python 3, TensorFlow 1.0, NumPy, SciPy, Pandas, SymPy, Matplotlib, BeautifulSoup4, OpenCV, PIL, tqdm
+* [Python 3](https://www.python.org/)
+* [TensorFlow 1.0](https://www.tensorflow.org/)
+* [NumPy](www.numpy.org/)
+* [SciPy](https://www.scipy.org/)
+* [Pandas](pandas.pydata.org/)
+* [Matplotlib](https://matplotlib.org/)
+* [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/)
+* [OpenCV](https://github.com/opencv/opencv)
+* [PIL](http://www.pythonware.com/products/pil/)
+* [tqdm](https://github.com/tqdm/tqdm)
+* [COCO](https://github.com/pdollar/coco) (optional)
 
 ## Configuration
 
-Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). Be ware the configurations can be extended using the "-c" command-line argument.
+Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). Notability the configurations can be extended using the "-c" command-line argument.
 
 ## Basic Usage
 
@@ -24,43 +34,63 @@ Configurations are mainly defined in the "config.ini" file. Such as the detectio
 
 ### Training a 20 classes Darknet YOLOv2 model from a pretrained 80 classes model
 
-- Cache the 20 classes training data using the customized config file argument. Cache files (.tfrecord) in "~/Documents/Database/yolo-tf/cache/voc" will be created.
+- Cache the 20 classes data using the customized config file argument. Cache files (.tfrecord) in "~/Documents/Database/yolo-tf/cache/20" will be created.
 
 ```
-python3 cache.py -c config.ini config/yolo2/darknet-voc.ini -v
+python3 cache.py -c config.ini config/yolo2/darknet-20.ini -v
 ```
 
 - Download a 80 classes Darknet YOLOv2 model (the original file name is "yolo.weights", a [version](https://drive.google.com/drive/folders/0B1tW_VtY7onidEwyQ2FtQVplWEU) from Darkflow is recommanded). In this tutorial I put it in "~/Downloads/yolo.weights".
 
-- Parse the 80 classes Darknet YOLOv2 model into Tensorflow format (~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt). A warning like "xxx bytes remaining" indicates the file "yolo.weights" is not compatiable with the original Darknet YOLOv2 model (defined in the function `model.yolo2.inference.darknet`).
+- Parse the 80 classes Darknet YOLOv2 model into Tensorflow format (~/Documents/Database/yolo-tf/yolo2/darknet/80/model.ckpt). A warning like "xxx bytes remaining" indicates the file "yolo.weights" is not compatiable with the original Darknet YOLOv2 model (defined in the function `model.yolo2.inference.darknet`). **Make sure the 80 classes data is cached before parsing**.
 
 ```
-python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-coco.ini -d
+python3 parse_darknet_yolo2.py ~/Downloads/yolo.weights -c config.ini config/yolo2/darknet-80.ini -d
 ```
 
-- Fine-tuning the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/voc) except the final convolutional layer and hyper-parameters. Starting the training process with gradient clipping to avoid NaN error. **Be ware the "-d" command-line argument will delete the model files and should be used only once when initializing the model**.
+- Transferring the 80 classes Darknet YOLOv2 model into a 20 classes model (~/Documents/Database/yolo-tf/yolo2/darknet/20) except the final convolutional layer and hyper-parameters. **Be ware the "-d" command-line argument will delete the model files and should be used only once when initializing the model**. A command-line argument "-g" can be used to perform gradient clipping to avoid NaN error.
 
 ```
-python3 train.py -c config.ini config/yolo2/darknet-voc.ini -f ~/Documents/Database/yolo-tf/yolo2/darknet/coco/model.ckpt -e yolo2_darknet/conv loss/hparam -g 0.9 -d
+python3 train.py -c config.ini config/yolo2/darknet-20.ini -t ~/Documents/Database/yolo-tf/yolo2/darknet/80/model.ckpt -e yolo2_darknet/conv loss/hparam -d
 ```
 
 - Using the following command in another terminal and opening the address "localhost:6006" in a web browser to monitor the training process.
 
 ```
-tensorboard --logdir /home/srm/Documents/Database/yolo-tf/yolo2/darknet/voc
+tensorboard --logdir /home/srm/Documents/Database/yolo-tf/yolo2/darknet/20
 ```
 
-- If you think your model is stabilized, press Ctrl+C to cancel and restart the training process without gradient clipping.
+- If you think your model is stabilized, press Ctrl+C to cancel and restart the training with a greater batch size.
 
 ```
-python3 train.py -c config.ini config/yolo2/darknet-voc.ini
+python3 train.py -c config.ini config/yolo2/darknet-20.ini -b 16
 ```
 
-- Training about 60,000 steps and detect objects with a camra.
+- Training about 60,000 steps and detect objects with a camera.
 
 ```
-python3 detect_camra.py -c config.ini config/yolo2/darknet-voc.ini
+python3 detect_camera.py -c config.ini config/yolo2/darknet-20.ini
 ```
+
+## Checklist
+
+- [x] Batch normalization
+- [x] Passthrough layer
+- [ ] Multi-scale training
+- [ ] Dimension cluster
+- [x] Extendable configuration (via "-c" command-line argument)
+- [x] PASCAL VOC dataset supporting
+- [x] MS COCO dataset supporting
+- [x] Data augmentation: random crop
+- [x] Data augmentation: random flip horizontally
+- [x] Multi-thread data batch queue
+- [x] Darknet model file (.weights) parser
+- [x] Partial model transferring before training
+- [x] Detection from image
+- [x] Detection from camera
+- [ ] Multi-GPU supporting
+- [ ] Faster NMS using C/C++ or GPU
+- [ ] Performance evaluation
 
 ## License
 
