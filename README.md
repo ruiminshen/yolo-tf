@@ -16,7 +16,7 @@
 
 ## Configuration
 
-Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). Notability the configurations can be extended using the "-c" command-line argument.
+Configurations are mainly defined in the "config.ini" file. Such as the detection model (config/model), base directory (config/basedir, which identifies the cache files (.tfrecord), the model data files (.ckpt), and summary data for TensorBoard), and the inference function ([model]/inference). *Notability the configurations can be extended using the "-c" command-line argument*.
 
 ## Basic Usage
 
@@ -66,7 +66,13 @@ tensorboard --logdir /home/srm/Documents/Database/yolo-tf/yolo2/darknet/20
 python3 train.py -c config.ini config/yolo2/darknet-20.ini -b 16
 ```
 
-- Training about 60,000 steps and detect objects with a camera.
+- Detect objects from an image file.
+
+```
+python3 detect.py $IMAGE_FILE -c config.ini config/yolo2/darknet-20.ini
+```
+
+- Detect objects with a camera.
 
 ```
 python3 detect_camera.py -c config.ini config/yolo2/darknet-20.ini
