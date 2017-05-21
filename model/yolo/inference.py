@@ -52,7 +52,7 @@ def tiny(net, classes, boxes_per_cell, training=False):
     net = tf.identity(net, name='%s/conv' % scope)
     _, cell_height, cell_width, _ = net.get_shape().as_list()
     net = slim.layers.flatten(net, scope='%s/flatten' % scope)
-    with slim.arg_scope([slim.layers.fully_connected], activation_fn=leaky_relu), slim.arg_scope([slim.layers.dropout], keep_prob=.5, is_training=training):
+    with slim.arg_scope([slim.layers.fully_connected], activation_fn=leaky_relu, weights_regularizer=slim.l2_regularizer(0.001)), slim.arg_scope([slim.layers.dropout], keep_prob=.5, is_training=training):
         index = 0
         net = slim.layers.fully_connected(net, 256, scope='%s/fc%d' % (scope, index))
         net = slim.layers.dropout(net, scope='%s/dropout%d' % (scope, index))

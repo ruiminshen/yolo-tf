@@ -108,7 +108,9 @@ def main():
     global_step = tf.contrib.framework.get_or_create_global_step()
     builder = yolo.Builder(args, config)
     builder(batch[0], training=True)
-    loss = builder.loss(batch[1:])
+    with tf.name_scope('total_loss') as name:
+        builder.create_objectives(batch[1:])
+        total_loss = tf.losses.get_total_loss(name=name)
     variables_to_restore = slim.get_variables_to_restore(exclude=args.exclude)
     with tf.name_scope('optimizer'):
         try:
@@ -122,7 +124,7 @@ def main():
             tf.logging.warn('using a staionary learning rate %f' % args.learning_rate)
         optimizer = get_optimizer(config, args.optimizer)(learning_rate)
         tf.logging.warn('optimizer=' + args.optimizer)
-        train_op = slim.learning.create_train_op(loss, optimizer, global_step,
+        train_op = slim.learning.create_train_op(total_loss, optimizer, global_step,
             clip_gradient_norm=args.gradient_clip, summarize_gradients=config.getboolean('summary', 'gradients'),
         )
     if args.transfer:
@@ -155,7 +157,7 @@ def make_args():
     parser.add_argument('-o', '--optimizer', default='adam')
     parser.add_argument('-n', '--logname', default=time.strftime('%Y-%m-%d_%H-%M-%S'), help='the name for TensorBoard')
     parser.add_argument('-g', '--gradient_clip', default=0, type=float, help='gradient clip')
-    parser.add_argument('-lr', '--learning_rate', default=1e-5, type=float, help='learning rate')
+    parser.add_argument('-lr', '--learning_rate', default=1e-6, type=float, help='learning rate')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--summary_secs', default=30, type=int, help='seconds to save summaries')
     parser.add_argument('--save_secs', default=600, type=int, help='seconds to save model')

@@ -54,8 +54,6 @@ class Model(object):
             self.offset_xy_min = tf.identity(self.offset_xy - _wh, name='offset_xy_min')
             self.offset_xy_max = tf.identity(self.offset_xy + _wh, name='offset_xy_max')
             self.areas = tf.reduce_prod(self.wh, -1, name='areas')
-        with tf.name_scope('regularizer') as name:
-            self.regularizer = tf.reduce_mean([tf.nn.l2_loss(v) for v in utils.match_trainable_variables(r'[_\w\d]+\/fc\d*\/weights')], name=name)
         if not training:
             with tf.name_scope('detection'):
                 cell_xy = calc_cell_xy(self.cell_height, self.cell_width).reshape([1, cells, 1, 2])
@@ -95,10 +93,11 @@ class Objectives(dict):
             coords_dist = tf.square(model.coords - self.coords, name='coords_dist')
             prob_dist = tf.square(model.prob - self.prob, name='prob_dist')
         with tf.name_scope('objectives'):
-            self['iou_best'] = tf.reduce_sum(mask_best * iou_dist, name='iou_best')
-            self['iou_normal'] = tf.reduce_sum(mask_normal * iou_dist, name='iou_normal')
-            self['coords'] = tf.reduce_sum(tf.expand_dims(mask_best, -1) * coords_dist, name='coords')
-            self['prob'] = tf.reduce_sum(tf.expand_dims(self.mask, -1) * prob_dist, name='prob')
+            cnt = np.multiply.reduce(iou_dist.get_shape().as_list())
+            self['iou_best'] = tf.identity(tf.reduce_sum(mask_best * iou_dist) / cnt, name='iou_best')
+            self['iou_normal'] = tf.identity(tf.reduce_sum(mask_normal * iou_dist) / cnt, name='iou_normal')
+            self['coords'] = tf.identity(tf.reduce_sum(tf.expand_dims(mask_best, -1) * coords_dist) / cnt, name='coords')
+            self['prob'] = tf.identity(tf.reduce_sum(tf.expand_dims(self.mask, -1) * prob_dist) / cnt, name='prob')
 
 
 class Builder(object):
@@ -116,15 +115,9 @@ class Builder(object):
         with tf.name_scope(__name__.split('.')[-1]):
             self.model = Model(self.output, _scope, len(self.names), self.boxes_per_cell)
     
-    def loss(self, labels):
+    def create_objectives(self, labels):
         section = __name__.split('.')[-1]
-        with tf.name_scope('loss') as name:
-            self.objectives = Objectives(self.model, *labels)
-            with tf.variable_scope('hparam'):
-                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
-                self.hparam_regularizer = tf.Variable(self.config.getfloat(section, 'hparam'), name='hparam_regularizer', trainable=False)
-            with tf.name_scope('loss_objectives'):
-                loss_objectives = tf.reduce_sum([tf.multiply(self.objectives[key], self.hparam[key], name='weighted_' + key) for key in self.objectives], name='loss_objectives')
-            loss_regularizer = tf.identity(self.hparam_regularizer * self.model.regularizer, name='loss_regularizer')
-            loss = tf.identity(loss_objectives + loss_regularizer, name=name)
-        return loss
+        self.objectives = Objectives(self.model, *labels)
+        with tf.name_scope('weighted_objectives'):
+            for key in self.objectives:
+                tf.add_to_collection(tf.GraphKeys.LOSSES, tf.multiply(self.objectives[key], self.config.getfloat(section + '_hparam', key), name='weighted_' + key))

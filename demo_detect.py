@@ -30,12 +30,12 @@ import utils.visualize
 
 
 class Drawer(object):
-    def __init__(self, sess, names, cell_width, cell_height, image, labels, model, loss, feed_dict):
+    def __init__(self, sess, names, cell_width, cell_height, image, labels, model, feed_dict):
         self.sess = sess
         self.names = names
         self.cell_width, self.cell_height = cell_width, cell_height
         self.image, self.labels = image, labels
-        self.model, self.loss = model, loss
+        self.model = model
         self.feed_dict = feed_dict
         self.fig = plt.figure()
         self.ax = self.fig.gca()
@@ -96,7 +96,9 @@ def main():
         builder(ph_image)
         variables_to_restore = slim.get_variables_to_restore()
         ph_labels = [tf.placeholder(l.dtype, [1] + l.get_shape().as_list(), name='ph_' + l.op.name) for l in labels]
-        loss = builder.loss(ph_labels)
+        with tf.name_scope('total_loss') as name:
+            builder.create_objectives(ph_labels)
+            total_loss = tf.losses.get_total_loss(name=name)
         tf.global_variables_initializer().run()
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
@@ -111,7 +113,8 @@ def main():
         tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, variables_to_restore)(sess)
         tf.logging.info('global_step=%d' % sess.run(global_step))
-        _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, _image_rgb, _labels, builder.model, loss, feed_dict)
+        tf.logging.info('total_loss=%f' % sess.run(total_loss, feed_dict))
+        _ = Drawer(sess, names, builder.model.cell_width, builder.model.cell_height, _image_rgb, _labels, builder.model, feed_dict)
         plt.show()
 
 

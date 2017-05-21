@@ -86,11 +86,12 @@ class Objectives(dict):
             coords_dist = tf.square(model.coords - self.coords, name='coords_dist')
             prob_dist = tf.square(model.prob - self.prob, name='prob_dist')
         with tf.name_scope('objectives'):
-            self['iou_best'] = tf.reduce_sum(mask_best * iou_dist, name='iou_best')
-            self['iou_normal'] = tf.reduce_sum(mask_normal * iou_dist, name='iou_normal')
+            cnt = np.multiply.reduce(iou_dist.get_shape().as_list())
+            self['iou_best'] = tf.identity(tf.reduce_sum(mask_best * iou_dist) / cnt, name='iou_best')
+            self['iou_normal'] = tf.identity(tf.reduce_sum(mask_normal * iou_dist) / cnt, name='iou_normal')
             _mask_best = tf.expand_dims(mask_best, -1)
-            self['coords'] = tf.reduce_sum(_mask_best * coords_dist, name='coords')
-            self['prob'] = tf.reduce_sum(_mask_best * prob_dist, name='prob')
+            self['coords'] = tf.identity(tf.reduce_sum(_mask_best * coords_dist) / cnt, name='coords')
+            self['prob'] = tf.identity(tf.reduce_sum(_mask_best * prob_dist) / cnt, name='prob')
 
 
 class Builder(yolo.Builder):
@@ -110,13 +111,9 @@ class Builder(yolo.Builder):
         with tf.name_scope(__name__.split('.')[-1]):
             self.model = Model(self.output, len(self.names), self.anchors, training=training)
     
-    def loss(self, labels):
+    def create_objectives(self, labels):
         section = __name__.split('.')[-1]
-        with tf.name_scope('loss') as name:
-            self.objectives = Objectives(self.model, *labels)
-            with tf.variable_scope('hparam'):
-                self.hparam = dict([(key, tf.Variable(float(s), name='hparam_' + key, trainable=False)) for key, s in self.config.items(section + '_hparam')])
-            with tf.name_scope('loss_objectives'):
-                loss_objectives = tf.reduce_sum([tf.multiply(self.objectives[key], self.hparam[key], name='weighted_' + key) for key in self.objectives], name='loss_objectives')
-            loss = tf.identity(loss_objectives, name=name)
-        return loss
+        self.objectives = Objectives(self.model, *labels)
+        with tf.name_scope('weighted_objectives'):
+            for key in self.objectives:
+                tf.add_to_collection(tf.GraphKeys.LOSSES, tf.multiply(self.objectives[key], self.config.getfloat(section + '_hparam', key), name='weighted_' + key))
