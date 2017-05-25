@@ -47,7 +47,7 @@ def main():
             while True:
                 ret, image_bgr = cap.read()
                 assert ret
-                image_width, image_height, _ = image_bgr.shape
+                image_height, image_width, _ = image_bgr.shape
                 scale = [image_width / builder.model.cell_width, image_height / builder.model.cell_height]
                 image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
                 image_std = np.expand_dims(preprocess(cv2.resize(image_rgb, (width, height))).astype(np.float32), 0)

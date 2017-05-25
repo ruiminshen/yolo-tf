@@ -22,7 +22,6 @@ import inspect
 import numpy as np
 import matplotlib.patches as patches
 import tensorflow as tf
-import sympy
 from .. import preprocess
 
 
