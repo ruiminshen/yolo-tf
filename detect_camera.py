@@ -40,7 +40,7 @@ def main():
         tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         tf.logging.info('global_step=%d' % sess.run(global_step))
-        tensors = [builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max]
+        tensors = [builder.model.conf, builder.model.xy_min, builder.model.xy_max]
         tensors = [tf.check_numerics(t, t.op.name) for t in tensors]
         cap = cv2.VideoCapture(0)
         try:
@@ -53,7 +53,7 @@ def main():
                 image_std = np.expand_dims(preprocess(cv2.resize(image_rgb, (width, height))).astype(np.float32), 0)
                 feed_dict = {ph_image: image_std}
                 conf, xy_min, xy_max = sess.run(tensors, feed_dict)
-                boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+                boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.threshold, args.threshold_iou)
                 for _conf, _xy_min, _xy_max in boxes:
                     index = np.argmax(_conf)
                     if _conf[index] > args.threshold:
@@ -72,8 +72,8 @@ def make_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-p', '--preprocess', default='std', help='the preprocess function')
-    parser.add_argument('-t', '--threshold', type=float, default=0.3, help='detection threshold')
-    parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
+    parser.add_argument('-t', '--threshold', type=float, default=0.3)
+    parser.add_argument('--threshold_iou', type=float, default=0.4, help='IoU threshold')
     parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 

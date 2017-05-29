@@ -57,9 +57,9 @@ def main():
         tf.logging.info('load ' + model_path)
         slim.assign_from_checkpoint_fn(model_path, tf.global_variables())(sess)
         tf.logging.info('global_step=%d' % sess.run(global_step))
-        tensors = [builder.model.conf * tf.to_float(builder.model.conf > args.threshold), builder.model.xy_min, builder.model.xy_max]
+        tensors = [builder.model.conf, builder.model.xy_min, builder.model.xy_max]
         conf, xy_min, xy_max = sess.run([tf.check_numerics(t, t.op.name) for t in tensors])
-        boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.nms_threshold)
+        boxes = utils.postprocess.non_max_suppress(conf[0], xy_min[0], xy_max[0], args.threshold, args.threshold_iou)
         image_height, image_width, _ = image_rgb.shape
         scale = [image_width / builder.model.cell_width, image_height / builder.model.cell_height]
         fig = plt.figure()
@@ -88,8 +88,8 @@ def make_args():
     parser.add_argument('image', help='input image')
     parser.add_argument('-c', '--config', nargs='+', default=['config.ini'], help='config file')
     parser.add_argument('-p', '--preprocess', default='std', help='the preprocess function')
-    parser.add_argument('-t', '--threshold', type=float, default=0.3, help='detection threshold')
-    parser.add_argument('-n', '--nms_threshold', type=float, default=0.4, help='non-max suppress threshold')
+    parser.add_argument('-t', '--threshold', type=float, default=0.3)
+    parser.add_argument('--threshold_iou', type=float, default=0.4, help='IoU threshold')
     parser.add_argument('--level', default='info', help='logging level')
     return parser.parse_args()
 

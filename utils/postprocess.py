@@ -36,16 +36,16 @@ def iou(xy_min1, xy_max1, xy_min2, xy_max2):
     return _areas / np.maximum(areas1 + areas2 - _areas, 1e-10)
 
 
-def non_max_suppress(conf, xy_min, xy_max, threshold=.4):
+def non_max_suppress(conf, xy_min, xy_max, threshold, threshold_iou):
     _, _, classes = conf.shape
     boxes = [(_conf, _xy_min, _xy_max) for _conf, _xy_min, _xy_max in zip(conf.reshape(-1, classes), xy_min.reshape(-1, 2), xy_max.reshape(-1, 2))]
     for c in range(classes):
         boxes.sort(key=lambda box: box[0][c], reverse=True)
         for i in range(len(boxes) - 1):
             box = boxes[i]
-            if box[0][c] == 0:
+            if box[0][c] <= threshold:
                 continue
             for _box in boxes[i + 1:]:
-                if iou(box[1], box[2], _box[1], _box[2]) >= threshold:
+                if iou(box[1], box[2], _box[1], _box[2]) >= threshold_iou:
                     _box[0][c] = 0
     return boxes
