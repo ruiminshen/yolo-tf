@@ -57,7 +57,7 @@ python3 train.py -c config.ini config/yolo2/darknet-20.ini -t ~/Documents/Databa
 - Using the following command in another terminal and opening the address "localhost:6006" in a web browser to monitor the training process.
 
 ```
-tensorboard --logdir /home/srm/Documents/Database/yolo-tf/yolo2/darknet/20
+tensorboard --logdir ~/Documents/Database/yolo-tf/yolo2/darknet/20
 ```
 
 - If you think your model is stabilized, press Ctrl+C to cancel and restart the training with a greater batch size.
