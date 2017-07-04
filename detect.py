@@ -43,7 +43,10 @@ def read_image(path):
     for key in ExifTags.TAGS.keys():
         if ExifTags.TAGS[key] == 'Orientation':
             break
-    exif = dict(image._getexif().items())
+    try:
+        exif = dict(image._getexif().items())
+    except AttributeError:
+        return image
     if exif[key] == 3:
         image = image.rotate(180, expand=True)
     elif exif[key] == 6:

@@ -34,6 +34,6 @@ def load_dataset(path, name_index):
                 ymax = float(bndbox.find('ymax').text) - 1
                 objects_coord.append((xmin, ymin, xmax, ymax))
             else:
-                sys.stderr.write(name.text + ' not in names')
+                sys.stderr.write(name.text + ' not in names\n')
     size = anno.find('size')
     return anno.find('filename').text, (int(size.find('height').text), int(size.find('width').text), int(size.find('depth').text)), objects_class, objects_coord
