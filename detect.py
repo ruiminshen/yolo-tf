@@ -61,6 +61,8 @@ def detect(sess, model, names, image, path):
     _, height, width, _ = image.get_shape().as_list()
     _image = read_image(path)
     image_original = np.array(np.uint8(_image))
+    if len(image_original.shape) == 2:
+        image_original = np.repeat(np.expand_dims(image_original, -1), 3, 2)
     image_height, image_width, _ = image_original.shape
     image_std = preprocess(np.array(np.uint8(_image.resize((width, height)))).astype(np.float32))
     feed_dict = {image: np.expand_dims(image_std, 0)}
