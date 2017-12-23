@@ -1,3 +1,5 @@
+This project is deprecated. Please see [yolo2-pytorch](https://github.com/ruiminshen/yolo2-pytorch)
+
 # TensorFlow implementation of the [YOLO (You Only Look Once)](https://arxiv.org/pdf/1506.02640.pdf) and [YOLOv2](https://arxiv.org/pdf/1612.08242.pdf)
 
 ## Dependencies
